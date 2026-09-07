@@ -3,3 +3,9 @@ node_modules/
 coverage/
 cache/
 artifacts/
+*.pub
+*ghp_*
+*github*
+*token*
+*.pem
+*.key
