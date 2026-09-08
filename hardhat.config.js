@@ -12,14 +12,9 @@ module.exports = {
       chainId: 31337
     },
     sepolia: {
-      url: "https://sepolia.gateway.tenderly.co",
+      url: "https://ethereum-sepolia-rpc.publicnode.com",
       chainId: 11155111,
       accounts: [PRIVATE_KEY]
     }
   }
 };
-// Add this at the top
-require("@nomicfoundation/hardhat-verify");
-
-// Add Etherscan API key (get from https://etherscan.io/myapikey)
-const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
