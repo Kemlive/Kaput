@@ -15,6 +15,16 @@ module.exports = {
       url: "https://ethereum-sepolia-rpc.publicnode.com",
       chainId: 11155111,
       accounts: [PRIVATE_KEY]
+    },
+    ethereum: {
+      url: "https://eth.llamarpc.com",
+      chainId: 1,
+      accounts: [PRIVATE_KEY]
+    },
+    arbitrum: {
+      url: "https://arb1.arbitrum.io/rpc",
+      chainId: 42161,
+      accounts: [PRIVATE_KEY]
     }
   }
 };
