@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kaput - Multi-Chain Privacy Wallet</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .network-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .network-card {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        .network-card:hover {
+            transform: translateY(-5px);
+            background: #3a3a3a;
+        }
+        .token-list {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .token-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #3a3a3a;
+        }
+        button {
+            background: #6c5ce7;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5f3dc4;
+        }
+        .address-box {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🕵️ Kaput Multi-Chain Privacy Wallet</h1>
+        <p>Receive USDT and tokens on any network privately</p>
+        
+        <h2>Supported Networks</h2>
+        <div class="network-grid">
+            <div class="network-card" onclick="selectNetwork('ethereum')">
+                <h3>Ethereum</h3>
+                <p>ETH • USDT • ERC20</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('bsc')">
+                <h3>BNB Chain</h3>
+                <p>BNB • USDT • BEP20</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('polygon')">
+                <h3>Polygon</h3>
+                <p>MATIC • USDT</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('arbitrum')">
+                <h3>Arbitrum</h3>
+                <p>ETH • USDT</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('optimism')">
+                <h3>Optimism</h3>
+                <p>ETH • USDT</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('tron')">
+                <h3>TRON</h3>
+                <p>TRX • USDT (TRC20)</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('avalanche')">
+                <h3>Avalanche</h3>
+                <p>AVAX • USDT</p>
+            </div>
+            <div class="network-card" onclick="selectNetwork('base')">
+                <h3>Base</h3>
+                <p>ETH • USDT</p>
+            </div>
+        </div>
+        
+        <h2>Your Deposit Addresses</h2>
+        <div id="depositAddresses" class="address-box">
+            Generate addresses to receive tokens
+        </div>
+        
+        <button onclick="generateAllAddresses()">Generate All Network Addresses</button>
+        
+        <h2>Supported Tokens</h2>
+        <div class="token-list">
+            <div class="token-item">
+                <span>USDT (TRC20)</span>
+                <span>TRON Network</span>
+            </div>
+            <div class="token-item">
+                <span>USDT (ERC20)</span>
+                <span>Ethereum Network</span>
+            </div>
+            <div class="token-item">
+                <span>USDT (BEP20)</span>
+                <span>BNB Chain</span>
+            </div>
+            <div class="token-item">
+                <span>USDC</span>
+                <span>Multiple Networks</span>
+            </div>
+            <div class="token-item">
+                <span>DAI</span>
+                <span>Ethereum Network</span>
+            </div>
+        </div>
+        
+        <button onclick="sweepAllToPrivacy()">Sweep All to Privacy Pool</button>
+    </div>
+    
+    <script>
+        let addresses = {};
+        
+        function selectNetwork(network) {
+            alert('Selected: ' + network + '\nWill generate private address for this network');
+        }
+        
+        function generateAllAddresses() {
+            const networks = ['ethereum', 'bsc', 'polygon', 'arbitrum', 'optimism', 'tron', 'avalanche', 'base'];
+            
+            addresses = {};
+            let html = '';
+            
+            networks.forEach(network => {
+                // Generate random address for each network
+                const wallet = ethers.Wallet.createRandom();
+                addresses[network] = wallet.address;
+                html += `<div><strong>${network.toUpperCase()}:</strong> ${wallet.address}</div>`;
+            });
+            
+            document.getElementById('depositAddresses').innerHTML = html;
+        }
+        
+        function sweepAllToPrivacy() {
+            alert('Sweeping all tokens to privacy pool...');
+        }
+    </script>
+</body>
+</html>
