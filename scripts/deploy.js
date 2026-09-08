@@ -5,35 +5,33 @@ async function main() {
 
   const PrivacyPool = await hre.ethers.getContractFactory("PrivacyPool");
   const privacyPool = await PrivacyPool.deploy();
-  await privacyPool.deployed();
-  console.log("PrivacyPool deployed to:", privacyPool.address);
+  await privacyPool.waitForDeployment();
+  const privacyPoolAddress = await privacyPool.getAddress();
+  console.log("PrivacyPool deployed to:", privacyPoolAddress);
 
   const ArbitrumBridgeAdapter = await hre.ethers.getContractFactory("ArbitrumBridgeAdapter");
   const bridgeAdapter = await ArbitrumBridgeAdapter.deploy(
     "0x0000000000000000000000000000000000000000",
     "0x0000000000000000000000000000000000000000"
   );
-  await bridgeAdapter.deployed();
-  console.log("BridgeAdapter deployed to:", bridgeAdapter.address);
+  await bridgeAdapter.waitForDeployment();
+  const bridgeAdapterAddress = await bridgeAdapter.getAddress();
+  console.log("BridgeAdapter deployed to:", bridgeAdapterAddress);
 
   const PrivacyWallet = await hre.ethers.getContractFactory("PrivacyWallet");
   const privacyWallet = await PrivacyWallet.deploy(
-    bridgeAdapter.address,
-    privacyPool.address
+    bridgeAdapterAddress,
+    privacyPoolAddress
   );
-  await privacyWallet.deployed();
-  console.log("PrivacyWallet deployed to:", privacyWallet.address);
+  await privacyWallet.waitForDeployment();
+  const privacyWalletAddress = await privacyWallet.getAddress();
+  console.log("PrivacyWallet deployed to:", privacyWalletAddress);
 
-  const salt = hre.ethers.utils.id("first-deposit");
-  const tx = await privacyWallet.generateNewDepositAddress(salt);
-  await tx.wait();
-  console.log("Generated first deposit address with salt:", salt);
-
-  console.log("\nDeployment complete");
+  console.log("\nDeployment complete!");
   console.log("-----------------------------------");
-  console.log("Privacy Wallet:", privacyWallet.address);
-  console.log("Privacy Pool:", privacyPool.address);
-  console.log("Bridge:", bridgeAdapter.address);
+  console.log("Privacy Wallet:", privacyWalletAddress);
+  console.log("Privacy Pool:", privacyPoolAddress);
+  console.log("Bridge:", bridgeAdapterAddress);
 }
 
 main()

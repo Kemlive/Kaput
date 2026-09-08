@@ -1,12 +1,5 @@
-require("@nomiclabs/hardhat-waffle");
+require("@nomicfoundation/hardhat-ethers");
 
 module.exports = {
-  solidity: "0.8.19",
-  networks: {
-    hardhat: {},
-    arbitrumGoerli: {
-      url: "https://goerli-rollup.arbitrum.io/rpc",
-      accounts: [process.env.PRIVATE_KEY]
-    }
-  }
+  solidity: "0.8.20"
 };

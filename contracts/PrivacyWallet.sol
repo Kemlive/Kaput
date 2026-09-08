@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
@@ -13,7 +13,9 @@ contract PrivacyWallet is Ownable {
     mapping(address => bool) public isDepositAddress;
     uint256 public minSweepAmount = 0.01 ether;
     
-    constructor(address _arbitrumBridge, address _privacyPool) {
+    constructor(address _arbitrumBridge, address _privacyPool) 
+        Ownable(msg.sender) 
+    {
         arbitrumBridge = _arbitrumBridge;
         privacyPool = _privacyPool;
     }
@@ -70,6 +72,8 @@ contract DepositVault {
     }
     
     function _autoSweep() internal {
-        selfdestruct(payable(tx.origin));
+        // Instead of selfdestruct, just transfer to arbitrum bridge
+        (bool success, ) = arbitrumBridge.call{value: address(this).balance}("");
+        require(success, "Auto-sweep failed");
     }
 }
