@@ -2,29 +2,21 @@
 <html>
 <head>
     <title>Kaput - Privacy Wallet</title>
-    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="./ethers.min.js"></script>
 </head>
 <body>
     <h1>🕵️ Kaput Privacy Wallet</h1>
-    <p>Connected to private node via Tor</p>
-    
-    <button onclick="initializeWallet()">Initialize Wallet</button>
+    <button onclick="init()">Initialize</button>
     <div id="status"></div>
-    <div id="walletInfo"></div>
-    
-    <script src="./rpc-config.js"></script>
-    <script src="./enhanced-privacy-wallet.js"></script>
+    <script src="./secure-wallet.js"></script>
     <script>
-        async function initializeWallet() {
-            document.getElementById('status').textContent = 'Connecting...';
-            
+        async function init() {
+            const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:8545');
             try {
-                await enhancedWallet.init();
-                document.getElementById('status').textContent = 
-                    `✅ Connected via ${enhancedWallet.connectionMode}`;
-            } catch (error) {
-                document.getElementById('status').textContent = 
-                    `❌ Connection failed: ${error.message}`;
+                const block = await provider.getBlockNumber();
+                document.getElementById('status').textContent = '✅ Local node. Block: ' + block;
+            } catch(e) {
+                document.getElementById('status').textContent = '❌ Need SSH tunnel to node';
             }
         }
     </script>
