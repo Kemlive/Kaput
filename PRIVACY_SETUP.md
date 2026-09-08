@@ -2,53 +2,29 @@
 
 ## IMPORTANT: Remove All Identity-Linked Services
 
-### 1. NO Etherscan API Key
-- Etherscan API keys are linked to your email
-- They can track your verification requests
-- Use anonymous block explorers instead
+### NO API Keys
+- No Etherscan API key (linked to email)
+- No Infura project ID (linked to account)
+- No Alchemy API key (linked to account)
 
-### 2. NO Infura/Alchemy API Keys
-- These services track your IP
-- They log your requests
-- Use public RPCs instead
+### Use Public RPCs Only
+- Ethereum: eth.llamarpc.com, ethereum.publicnode.com
+- Arbitrum: arb1.arbitrum.io, arbitrum.publicnode.com
+- Optimism: mainnet.optimism.io, optimism.publicnode.com
+- Polygon: polygon-rpc.com, polygon.publicnode.com
 
-### 3. NO Personal RPC Endpoints
-- Your RPC endpoint reveals your IP
-- Use rotating public RPCs
-- Or run your own node via Tor
+### Use Tor for Maximum Privacy
+- Run Tor: tor --SocksPort 9050
+- Configure provider with proxy: socks5://127.0.0.1:9050
 
-## Privacy-First RPC Configuration:
+### What NOT to use
+- API keys (track your requests)
+- Personal RPC (reveals IP)
+- KYC services
+- Real identity on GitHub
 
-### Public RPCs (No API Key Needed):
-```javascript
-const PRIVATE_RPCS = {
-    ethereum: [
-        'https://eth.llamarpc.com',
-        'https://ethereum.publicnode.com',
-        'https://1rpc.io/eth',
-        'https://rpc.mevblocker.io'
-    ],
-    arbitrum: [
-        'https://arb1.arbitrum.io/rpc',
-        'https://arbitrum.publicnode.com',
-        'https://1rpc.io/arb'
-    ],
-    optimism: [
-        'https://mainnet.optimism.io',
-        'https://optimism.publicnode.com',
-        'https://1rpc.io/op'
-    ],
-    polygon: [
-        'https://polygon-rpc.com',
-        'https://polygon.publicnode.com',
-        'https://1rpc.io/matic'
-    ]
-};
-# Run Tor
-tor --SocksPort 9050
-
-# Configure wallet to use Tor
-const provider = new ethers.providers.JsonRpcProvider({
-    url: rpcUrl,
-    proxy: 'socks5://127.0.0.1:9050'
-});
+### What TO use
+- Public RPCs (no registration)
+- Tor/VPN
+- Anonymous accounts
+- Local node (most private)
