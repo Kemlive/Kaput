@@ -28,6 +28,7 @@
         .header {
             text-align: center;
             padding: 40px 0;
+            position: relative;
         }
         
         .header h1 {
@@ -39,6 +40,27 @@
         .header p {
             font-size: 1.2em;
             opacity: 0.9;
+        }
+        
+        .network-switcher {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        
+        .network-switcher select {
+            padding: 10px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .network-switcher select option {
+            background: #667eea;
+            color: white;
         }
         
         .grid {
@@ -174,11 +196,25 @@
 <body>
     <div class="container">
         <div class="header">
+            <div class="network-switcher">
+                <select id="networkSelector" onchange="switchNetwork(this.value)">
+                    <option value="ethereum">Ethereum</option>
+                    <option value="arbitrum">Arbitrum</option>
+                    <option value="optimism">Optimism</option>
+                    <option value="base">Base</option>
+                    <option value="polygon">Polygon</option>
+                    <option value="bnb">BNB Chain</option>
+                    <option value="avalanche">Avalanche</option>
+                    <option value="linea">Linea</option>
+                    <option value="zksync">zkSync Era</option>
+                    <option value="scroll">Scroll</option>
+                </select>
+            </div>
+            
             <h1>🕵️ Kaput Advanced Privacy</h1>
             <p>Railgun Integration • Stealth Addresses • Multi-hop Routing</p>
         </div>
         
-        <!-- Setup Section -->
         <div id="setupSection" class="card">
             <h2>Initialize Privacy Wallet</h2>
             <p>Creates a wallet with built-in privacy features</p>
@@ -187,9 +223,7 @@
             </button>
         </div>
         
-        <!-- Wallet Section -->
         <div id="walletSection" style="display:none">
-            <!-- Stats -->
             <div class="card">
                 <h2>Privacy Statistics</h2>
                 <div class="stats">
@@ -209,7 +243,6 @@
             </div>
             
             <div class="grid">
-                <!-- Wallet Info -->
                 <div class="card">
                     <h2>💰 Your Private Wallet</h2>
                     <div class="address-box" id="walletAddress">Loading...</div>
@@ -217,7 +250,6 @@
                     <span class="badge badge-blue">Self-Custody</span>
                 </div>
                 
-                <!-- Stealth Address -->
                 <div class="card">
                     <h2>🎭 Stealth Address</h2>
                     <button class="button" onclick="generateStealthAddress()">
@@ -226,7 +258,6 @@
                     <div class="address-box" id="stealthAddress">Not generated</div>
                 </div>
                 
-                <!-- Private Deposit -->
                 <div class="card">
                     <h2>🔒 Private Deposit</h2>
                     <input type="number" id="privateAmount" class="input" placeholder="Amount in ETH" step="0.01">
@@ -236,7 +267,6 @@
                     <div id="depositStatus"></div>
                 </div>
                 
-                <!-- Privacy Features -->
                 <div class="card">
                     <h2>🛡️ Privacy Features</h2>
                     <ul>
@@ -250,7 +280,6 @@
                 </div>
             </div>
             
-            <!-- Activity Log -->
             <div class="card">
                 <h2>📊 Activity Log</h2>
                 <div class="log-container" id="activityLog">
@@ -260,6 +289,7 @@
         </div>
     </div>
     
+    <script src="./network-config.js"></script>
     <script src="./enhanced-privacy-wallet.js"></script>
 </body>
 </html>
