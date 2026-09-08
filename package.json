@@ -12,6 +12,7 @@
     "@railgun-community/engine": "^9.6.0",
     "@railgun-community/shared-models": "^8.0.1",
     "@railgun-community/wallet": "^10.9.0",
+    "dotenv": "^17.4.2",
     "ethers": "^6.17.0",
     "hardhat": "^2.22.19"
   }
