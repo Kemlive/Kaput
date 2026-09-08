@@ -11,51 +11,19 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 31337
     },
-    // Testnets
     sepolia: {
       url: "https://ethereum-sepolia-rpc.publicnode.com",
       chainId: 11155111,
       accounts: [PRIVATE_KEY]
     },
-    bscTestnet: {
-      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
-      chainId: 97,
-      accounts: [PRIVATE_KEY]
-    },
-    polygonAmoy: {
-      url: "https://rpc-amoy.polygon.technology",
-      chainId: 80002,
-      accounts: [PRIVATE_KEY]
-    },
-    // Mainnets
     ethereum: {
       url: "https://eth.llamarpc.com",
       chainId: 1,
       accounts: [PRIVATE_KEY]
     },
-    bsc: {
-      url: "https://bsc-dataseed.binance.org",
-      chainId: 56,
-      accounts: [PRIVATE_KEY]
-    },
-    polygon: {
-      url: "https://polygon-rpc.com",
-      chainId: 137,
-      accounts: [PRIVATE_KEY]
-    },
     arbitrum: {
       url: "https://arb1.arbitrum.io/rpc",
       chainId: 42161,
-      accounts: [PRIVATE_KEY]
-    },
-    optimism: {
-      url: "https://mainnet.optimism.io",
-      chainId: 10,
-      accounts: [PRIVATE_KEY]
-    },
-    avalanche: {
-      url: "https://api.avax.network/ext/bc/C/rpc",
-      chainId: 43114,
       accounts: [PRIVATE_KEY]
     }
   }
