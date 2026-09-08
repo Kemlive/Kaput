@@ -10,3 +10,6 @@ artifacts/
 *.pem
 *.key
 .env
+.env*
+!.env.example
+*.save
