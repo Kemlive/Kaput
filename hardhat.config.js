@@ -11,24 +11,9 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 31337
     },
-    arbitrumSepolia: {
-      url: "https://sepolia-rollup.arbitrum.io/rpc",
-      chainId: 421614,
-      accounts: [PRIVATE_KEY]
-    },
-    optimismSepolia: {
-      url: "https://sepolia.optimism.io",
-      chainId: 11155420,
-      accounts: [PRIVATE_KEY]
-    },
-    baseSepolia: {
-      url: "https://sepolia.base.org",
-      chainId: 84532,
-      accounts: [PRIVATE_KEY]
-    },
-    polygonAmoy: {
-      url: "https://rpc-amoy.polygon.technology",
-      chainId: 80002,
+    sepolia: {
+      url: "https://sepolia.gateway.tenderly.co",
+      chainId: 11155111,
       accounts: [PRIVATE_KEY]
     }
   }

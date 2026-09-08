@@ -1,7 +1,8 @@
-// True Privacy Wallet - No MetaMask Required
+// True Privacy Wallet - Sepolia Testnet
 class KaputPrivacyWallet {
     constructor() {
-        this.provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:8545');
+        // Connect to Sepolia
+        this.provider = new ethers.providers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
         this.wallet = null;
         this.hdNode = null;
         this.addressIndex = 0;
@@ -22,14 +23,15 @@ class KaputPrivacyWallet {
             "function withdraw(bytes32 nullifierHash, address recipient, uint256 amount)",
         ];
         
+        // Sepolia contract addresses
         this.contracts.privacyWallet = new ethers.Contract(
-            '0x9A676e781A523b5d0C0e43731313A708CB607508',
+            '0x488dCCdE0565498fb7B7Fe8D8535CEF8FCe2Ce66',
             PRIVACY_WALLET_ABI,
             this.wallet
         );
         
         this.contracts.privacyPool = new ethers.Contract(
-            '0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0',
+            '0x87ac94848DA5A6b7C8F88D65977197E8FDE12920',
             PRIVACY_POOL_ABI,
             this.wallet
         );
@@ -37,16 +39,10 @@ class KaputPrivacyWallet {
     
     async createWallet() {
         try {
-            // Generate random wallet
             const randomWallet = ethers.Wallet.createRandom();
             this.wallet = randomWallet.connect(this.provider);
-            
-            // Store mnemonic for HD derivation
             this.mnemonic = randomWallet.mnemonic.phrase;
-            
-            // Create HD node from mnemonic
             this.hdNode = ethers.utils.HDNode.fromMnemonic(this.mnemonic);
-            
             this.initContracts();
             
             return {
@@ -83,12 +79,9 @@ class KaputPrivacyWallet {
             throw new Error("Wallet not initialized");
         }
         
-        // Derive a DIFFERENT address from the HD wallet
-        const path = `m/44'/60'/0'/0/${this.addressIndex + 1}`; // +1 to skip main wallet
+        const path = `m/44'/60'/0'/0/${this.addressIndex + 1}`;
         const childNode = this.hdNode.derivePath(path);
         const depositAddress = childNode.address;
-        
-        console.log("Generated deposit address:", depositAddress, "at path:", path);
         
         this.depositAddresses.push({
             index: this.addressIndex,
@@ -99,18 +92,12 @@ class KaputPrivacyWallet {
         });
         
         this.addressIndex++;
-        
         return depositAddress;
-    }
-    
-    async getBalance(address) {
-        return await this.provider.getBalance(address);
     }
     
     async depositToPrivacyPool(amountInEth) {
         try {
             const amountWei = ethers.utils.parseEther(amountInEth.toString());
-            
             const secret = ethers.utils.randomBytes(32);
             const nullifier = ethers.utils.randomBytes(32);
             const commitment = ethers.utils.solidityKeccak256(
@@ -118,102 +105,19 @@ class KaputPrivacyWallet {
                 [secret, nullifier]
             );
             
-            console.log("Depositing", amountInEth, "ETH to privacy pool...");
-            
             const tx = await this.contracts.privacyPool.deposit(commitment, {
                 value: amountWei,
                 gasLimit: 500000
             });
             
-            console.log("Transaction sent:", tx.hash);
             const receipt = await tx.wait();
-            console.log("Transaction confirmed:", receipt.transactionHash);
             
             return {
                 txHash: receipt.transactionHash,
-                commitment: commitment,
-                secret: secret,
-                nullifier: nullifier
+                commitment: commitment
             };
         } catch (error) {
             console.error("Deposit error:", error);
-            throw error;
-        }
-    }
-    
-    async sweepDepositAddress(depositAddress) {
-        try {
-            const depositInfo = this.depositAddresses.find(d => d.address === depositAddress);
-            if (!depositInfo) {
-                throw new Error("Deposit address not found");
-            }
-            
-            // Create wallet from the deposit address's private key
-            const depositWallet = new ethers.Wallet(depositInfo.privateKey, this.provider);
-            
-            const balance = await this.provider.getBalance(depositAddress);
-            console.log("Balance at", depositAddress, ":", ethers.utils.formatEther(balance), "ETH");
-            
-            if (balance.isZero()) {
-                return { status: 'empty', balance: '0' };
-            }
-            
-            // Send to privacy pool
-            const tx = await depositWallet.sendTransaction({
-                to: '0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0',
-                value: balance,
-                gasLimit: 21000
-            });
-            
-            console.log("Sweep transaction:", tx.hash);
-            const receipt = await tx.wait();
-            console.log("Sweep confirmed:", receipt.transactionHash);
-            
-            depositInfo.used = true;
-            
-            return {
-                status: 'swept',
-                txHash: receipt.transactionHash,
-                amount: ethers.utils.formatEther(balance)
-            };
-        } catch (error) {
-            console.error("Sweep error:", error);
-            throw error;
-        }
-    }
-    
-    async monitorDeposits(callback) {
-        for (const dep of this.depositAddresses) {
-            if (!dep.used) {
-                const balance = await this.provider.getBalance(dep.address);
-                if (!balance.isZero()) {
-                    callback(dep.address, ethers.utils.formatEther(balance));
-                }
-            }
-        }
-    }
-    
-    async withdrawToArbitrum(arbitrumAddress, amountInEth) {
-        try {
-            const nullifier = ethers.utils.randomBytes(32);
-            const nullifierHash = ethers.utils.keccak256(nullifier);
-            const amountWei = ethers.utils.parseEther(amountInEth.toString());
-            
-            const tx = await this.contracts.privacyPool.withdraw(
-                nullifierHash,
-                arbitrumAddress,
-                amountWei,
-                { gasLimit: 500000 }
-            );
-            
-            const receipt = await tx.wait();
-            
-            return {
-                txHash: receipt.transactionHash,
-                nullifier: nullifier
-            };
-        } catch (error) {
-            console.error("Withdrawal error:", error);
             throw error;
         }
     }
@@ -232,11 +136,9 @@ async function createWallet() {
         document.getElementById('seedPhrase').innerHTML = walletInfo.seedPhrase;
         document.getElementById('privateKey').innerHTML = walletInfo.privateKey;
         
-        addToHistory('Wallet created successfully');
-        console.log("Wallet created:", walletInfo.address);
+        addToHistory('Wallet created on Sepolia testnet');
     } catch (error) {
         alert('Error creating wallet: ' + error.message);
-        console.error(error);
     }
 }
 
@@ -255,10 +157,9 @@ async function restoreWallet() {
         document.getElementById('createSection').style.display = 'none';
         document.getElementById('walletAddress').innerHTML = walletInfo.address;
         
-        addToHistory('Wallet restored successfully');
+        addToHistory('Wallet restored on Sepolia');
     } catch (error) {
         alert('Error restoring wallet: ' + error.message);
-        console.error(error);
     }
 }
 
@@ -268,15 +169,9 @@ function generateDepositAddress() {
         return;
     }
     
-    try {
-        const address = kaputWallet.generateDepositAddress();
-        document.getElementById('depositAddress').innerHTML = address;
-        addToHistory('Generated deposit address: ' + address);
-        console.log("New deposit address:", address);
-    } catch (error) {
-        alert('Error generating address: ' + error.message);
-        console.error(error);
-    }
+    const address = kaputWallet.generateDepositAddress();
+    document.getElementById('depositAddress').innerHTML = address;
+    addToHistory('Generated deposit address: ' + address);
 }
 
 async function deposit() {
@@ -292,38 +187,11 @@ async function deposit() {
     }
     
     try {
-        addToHistory(`Depositing ${amount} ETH...`);
         const result = await kaputWallet.depositToPrivacyPool(amount);
         addToHistory(`✅ Deposited ${amount} ETH - TX: ${result.txHash.substring(0, 10)}...`);
     } catch (error) {
         addToHistory(`❌ Deposit failed: ${error.message}`);
         alert('Deposit error: ' + error.message);
-        console.error(error);
-    }
-}
-
-async function sweepDeposits() {
-    if (!kaputWallet) {
-        alert('Create wallet first');
-        return;
-    }
-    
-    addToHistory('Sweeping deposits...');
-    
-    for (const dep of kaputWallet.depositAddresses) {
-        if (!dep.used) {
-            try {
-                const result = await kaputWallet.sweepDepositAddress(dep.address);
-                if (result.status === 'swept') {
-                    addToHistory(`✅ Swept ${result.amount} ETH from ${dep.address.substring(0, 10)}...`);
-                } else if (result.status === 'empty') {
-                    addToHistory(`Empty: ${dep.address.substring(0, 10)}...`);
-                }
-            } catch (error) {
-                console.error('Sweep error for', dep.address, error);
-                addToHistory(`❌ Sweep failed: ${error.message}`);
-            }
-        }
     }
 }
 
@@ -335,19 +203,6 @@ function addToHistory(entry) {
     history.prepend(div);
 }
 
-// Auto-monitor for deposits
-setInterval(async () => {
-    if (kaputWallet && kaputWallet.depositAddresses.length > 0) {
-        await kaputWallet.monitorDeposits((address, balance) => {
-            addToHistory(`Detected ${balance} ETH at ${address.substring(0, 10)}...`);
-            // Auto-sweep
-            kaputWallet.sweepDepositAddress(address).then(result => {
-                if (result.status === 'swept') {
-                    addToHistory(`✅ Auto-swept ${result.amount} ETH`);
-                }
-            });
-        });
-    }
-}, 15000);
-
-console.log('Kaput Privacy Wallet loaded - No MetaMask required');
+console.log('Kaput Privacy Wallet - Sepolia Testnet');
+console.log('Privacy Wallet:', '0x488dCCdE0565498fb7B7Fe8D8535CEF8FCe2Ce66');
+console.log('Privacy Pool:', '0x87ac94848DA5A6b7C8F88D65977197E8FDE12920');
