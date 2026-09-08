@@ -18,3 +18,8 @@ module.exports = {
     }
   }
 };
+// Add this at the top
+require("@nomicfoundation/hardhat-verify");
+
+// Add Etherscan API key (get from https://etherscan.io/myapikey)
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
