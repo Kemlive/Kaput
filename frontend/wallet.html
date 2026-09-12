@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0f172a">
-    <meta name="description" content="Kaput — Private wallet with auto-sweep and self-custody. No KYC.">
-    <meta property="og:title" content="Kaput — Private Wallet">
+    <meta name="description" content="Kaput - Private wallet with auto-sweep and self-custody. No KYC.">
+    <meta property="og:title" content="Kaput - Private Wallet">
     <meta property="og:description" content="Auto-sweep privacy wallet. Self-custody. No KYC.">
     <meta property="og:type" content="website">
-    <title>Kaput — Private Wallet</title>
+    <title>Kaput - Private Wallet</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Cpath d='M30 25v50M30 50l25-25M30 50l25 25' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
     <script src="./ethers.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -102,7 +102,7 @@
 
         /* Tokens */
         .token-list { display: flex; flex-direction: column; gap: 10px; }
-        .token-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 14px; gap: 12px; }
+        .token-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 14px; gap: 12px; cursor: default; } .token-row:hover { border-color: var(--border); }
         .token-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
         .token-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: white; flex-shrink: 0; }
         .token-icon.dai { background: linear-gradient(135deg, #f5ac37, #f0b90b); }
@@ -260,7 +260,7 @@
         <div id="walletSection" class="hidden">
             <div class="sweep-status" id="sweepStatus">
                 <div class="sweep-pulse"></div>
-                <span id="sweepStatusText">Auto-sweep active — monitoring every 8 seconds</span>
+                <span id="sweepStatusText">Auto-sweep active - monitoring every 8 seconds</span>
             </div>
 
             <div class="stats-grid">
@@ -368,8 +368,8 @@
             <div class="settings-section">
                 <div class="settings-section-title">🌐 Network</div>
                 <div style="font-size: 14px; line-height: 1.8;">
-                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-dim);">Status</span><span id="settingsNetwork">—</span></div>
-                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-dim);">Block</span><span id="settingsBlock">—</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-dim);">Status</span><span id="settingsNetwork">-</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-dim);">Block</span><span id="settingsBlock">-</span></div>
                 </div>
             </div>
 
@@ -388,7 +388,7 @@
             <div class="modal-subtitle">Write this down. Never share it.</div>
             <div class="warning-box">⚠️ Lose this = lose your wallet forever.</div>
             <div class="seed-box" id="seedPhraseDisplay"></div>
-            <button class="btn btn-primary" onclick="confirmSeed()">I've Saved It — Continue</button>
+            <button class="btn btn-primary" onclick="confirmSeed()">I've Saved It - Continue</button>
         </div>
     </div>
 
@@ -651,7 +651,7 @@
         autoSweep.onSweepFailed = (addr, sym, reason) => {
             addActivity('warning', '⚠️ Sweep failed: ' + reason, addr.substring(0, 15) + '...');
             showToast('⚠️ ' + reason, 'warning');
-            saveTransaction(addr, 'in', 'Sweep Failed: ' + reason, '—', sym, null);
+            saveTransaction(addr, 'in', 'Sweep Failed: ' + reason, '-', sym, null);
         };
 
         function startAutoSweep() {
@@ -836,6 +836,7 @@
         function generateDepositAddress() {
             try {
                 const address = wallet.generateDepositAddress();
+                // Replace the displayed address (only latest shown)
                 document.getElementById('depositAddress').textContent = address;
                 document.getElementById('depositDisplay').classList.remove('hidden');
                 document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
