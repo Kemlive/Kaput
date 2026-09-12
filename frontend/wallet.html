@@ -218,9 +218,13 @@
         <!-- Welcome -->
         <div class="card fade-in" id="welcomeSection">
             <div class="card-title">🚀 Welcome to Kaput</div>
-            <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6; font-size: 14px;">
-                Privacy-first wallet with one-time deposit addresses, auto-sweep, and self-custody.
+            <p style="color: var(--text-dim); margin-bottom: 12px; line-height: 1.6; font-size: 14px;">
+                Self-custody wallet with one-time deposit addresses, auto-sweep, and encrypted local storage.
             </p>
+            <div style="padding: 12px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; margin-bottom: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.6;">
+                <strong style="color: var(--text);">Honest privacy notice:</strong>
+                On-chain transactions are currently publicly visible. True transaction privacy requires optional Railgun integration (coming in Stage 2). Deposit private keys are encrypted locally with your password.
+            </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button class="btn btn-primary" style="flex: 1; min-width: 180px;" onclick="showCreateForm()">✨ Create New Wallet</button>
                 <button class="btn btn-secondary" style="flex: 1; min-width: 180px;" onclick="showRestore()">🔑 Restore Wallet</button>
@@ -286,13 +290,16 @@
                         <div><div class="token-balance" id="balETH">0.0000</div><div class="token-balance-dim" id="balETHusd">$0.00</div></div>
                     </div>
                     <div class="token-row">
-                        <div class="token-info"><div class="token-icon dai">◈</div><div><div class="token-name">DAI</div><div class="token-network">Stablecoin • 95% Privacy</div></div></div>
+                        <div class="token-info"><div class="token-icon dai">◈</div><div><div class="token-name">DAI</div><div class="token-network">Stablecoin (mainnet)</div></div></div>
                         <div><div class="token-balance" id="balDAI">0.00</div><div class="token-balance-dim" id="balDAIusd">$0.00</div></div>
                     </div>
                     <div class="token-row">
-                        <div class="token-info"><div class="token-icon usdc">$</div><div><div class="token-name">USDC</div><div class="token-network">Stablecoin • 80% Privacy</div></div></div>
+                        <div class="token-info"><div class="token-icon usdc">$</div><div><div class="token-name">USDC</div><div class="token-network">Stablecoin (mainnet)</div></div></div>
                         <div><div class="token-balance" id="balUSDC">0.00</div><div class="token-balance-dim" id="balUSDCusd">$0.00</div></div>
                     </div>
+                </div>
+                <div style="margin-top: 12px; padding: 10px 12px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 10px; font-size: 12px; color: var(--text-dim); line-height: 1.5;">
+                    DAI and USDC live on Ethereum mainnet. On Sepolia testnet, they show as N/A.
                 </div>
                 <button class="btn btn-secondary" style="margin-top: 14px;" onclick="refreshBalances()">🔄 Refresh Balances</button>
             </div>
