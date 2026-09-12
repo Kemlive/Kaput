@@ -5,47 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kaput - Privacy Wallet</title>
     <script src="./ethers.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
             --primary: #6366f1;
             --primary-dark: #4f46e5;
-            --primary-light: #818cf8;
-            --secondary: #ec4899;
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
-            --bg-dark: #0f172a;
-            --bg-card: #1e293b;
-            --bg-card-hover: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
+            --bg: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --bg-input: rgba(15, 23, 42, 0.6);
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
             --border: #334155;
             --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
             --glow: 0 0 40px rgba(99, 102, 241, 0.3);
         }
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow-x: hidden;
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-card: rgba(255, 255, 255, 0.9);
+            --bg-input: rgba(241, 245, 249, 0.9);
+            --text: #0f172a;
+            --text-dim: #64748b;
+            --border: #e2e8f0;
+            --glow: 0 0 40px rgba(99, 102, 241, 0.15);
         }
 
-        /* Animated Background */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+
         .bg-animation {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            inset: 0;
             z-index: -1;
             overflow: hidden;
         }
@@ -53,13 +54,10 @@
         .bg-animation::before {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
             background: radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-                        radial-gradient(circle at 80% 20%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
-                        radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+                        radial-gradient(circle at 80% 20%, rgba(236, 72, 153, 0.15) 0%, transparent 50%);
             animation: bgRotate 30s linear infinite;
         }
 
@@ -68,80 +66,73 @@
             to { transform: rotate(360deg); }
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
-        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 20px 0;
             margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 16px;
         }
 
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
+        .logo { display: flex; align-items: center; gap: 12px; }
         .logo-icon {
-            width: 48px;
-            height: 48px;
+            width: 48px; height: 48px;
             background: var(--gradient);
             border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             font-size: 24px;
             box-shadow: var(--glow);
         }
-
         .logo-text {
-            font-size: 24px;
-            font-weight: 800;
+            font-size: 24px; font-weight: 800;
             background: var(--gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
 
-        .network-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .header-actions { display: flex; gap: 12px; align-items: center; }
+
+        .theme-toggle {
+            width: 48px; height: 48px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
             background: var(--bg-card);
-            padding: 10px 18px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s ease;
+        }
+        .theme-toggle:hover { border-color: var(--primary); transform: scale(1.05); }
+
+        .network-badge {
+            display: flex; align-items: center; gap: 8px;
+            background: var(--bg-card);
+            padding: 12px 18px;
             border-radius: 30px;
             border: 1px solid var(--border);
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 14px; font-weight: 500;
+            backdrop-filter: blur(20px);
         }
 
         .network-dot {
-            width: 8px;
-            height: 8px;
+            width: 8px; height: 8px;
             border-radius: 50%;
             background: var(--warning);
             animation: pulse 2s infinite;
         }
-
-        .network-dot.online {
-            background: var(--success);
-        }
+        .network-dot.online { background: var(--success); }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(1.2); }
         }
 
-        /* Cards */
         .card {
-            background: rgba(30, 41, 59, 0.7);
+            background: var(--bg-card);
             backdrop-filter: blur(20px);
             border: 1px solid var(--border);
             border-radius: 24px;
@@ -149,91 +140,73 @@
             margin-bottom: 24px;
             transition: all 0.3s ease;
         }
-
-        .card:hover {
-            border-color: var(--primary);
-            box-shadow: var(--glow);
-        }
+        .card:hover { border-color: var(--primary); box-shadow: var(--glow); }
 
         .card-title {
-            font-size: 18px;
-            font-weight: 700;
+            font-size: 18px; font-weight: 700;
             margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            display: flex; align-items: center; gap: 10px;
         }
 
-        /* Buttons */
         .btn {
-            padding: 16px 32px;
-            border-radius: 16px;
+            padding: 14px 28px;
+            border-radius: 14px;
             border: none;
             font-family: 'Inter', sans-serif;
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 15px; font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
-            width: 100%;
+            gap: 8px;
         }
 
         .btn-primary {
             background: var(--gradient);
             color: white;
             box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            width: 100%;
         }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.6);
-        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(99, 102, 241, 0.6); }
 
         .btn-secondary {
-            background: var(--bg-card);
-            color: var(--text-primary);
+            background: var(--bg-input);
+            color: var(--text);
             border: 1px solid var(--border);
+            width: 100%;
+        }
+        .btn-secondary:hover { border-color: var(--primary); }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 13px;
+            border-radius: 10px;
+            width: auto;
         }
 
-        .btn-secondary:hover {
-            background: var(--bg-card-hover);
-            border-color: var(--primary);
-        }
-
-        /* Inputs */
         .input {
             width: 100%;
-            padding: 16px 20px;
+            padding: 14px 18px;
             border-radius: 14px;
             border: 1px solid var(--border);
-            background: rgba(15, 23, 42, 0.6);
-            color: var(--text-primary);
+            background: var(--bg-input);
+            color: var(--text);
             font-family: 'Inter', sans-serif;
-            font-size: 16px;
+            font-size: 15px;
             transition: all 0.3s ease;
             outline: none;
         }
+        .input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .input::placeholder { color: var(--text-dim); }
 
-        .input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-        }
-
-        .input::placeholder {
-            color: var(--text-secondary);
-        }
-
-        /* Address Display */
         .address-box {
-            background: rgba(15, 23, 42, 0.8);
+            background: var(--bg-input);
             border: 1px solid var(--border);
             border-radius: 14px;
-            padding: 16px 20px;
+            padding: 14px 18px;
             font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 14px;
+            font-size: 13px;
             word-break: break-all;
             display: flex;
             align-items: center;
@@ -245,7 +218,7 @@
         .copy-btn {
             background: transparent;
             border: 1px solid var(--border);
-            color: var(--text-secondary);
+            color: var(--text-dim);
             padding: 6px 12px;
             border-radius: 8px;
             cursor: pointer;
@@ -253,158 +226,172 @@
             transition: all 0.3s ease;
             flex-shrink: 0;
         }
+        .copy-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
 
-        .copy-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 16px;
+            margin-bottom: 24px;
         }
 
         .stat-card {
-            background: rgba(15, 23, 42, 0.6);
+            background: var(--bg-input);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 24px;
             text-align: center;
+            transition: all 0.3s ease;
         }
+        .stat-card:hover { border-color: var(--primary); }
 
         .stat-value {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 800;
             background: var(--gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
 
         .stat-label {
-            font-size: 13px;
-            color: var(--text-secondary);
-            font-weight: 500;
+            font-size: 12px;
+            color: var(--text-dim);
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
-        /* Activity Log */
-        .activity-log {
-            max-height: 300px;
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--primary) var(--bg-dark);
+        /* Tokens */
+        .token-list { display: flex; flex-direction: column; gap: 12px; }
+        .token-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            transition: all 0.3s ease;
         }
+        .token-row:hover { border-color: var(--primary); }
+        .token-info { display: flex; align-items: center; gap: 14px; }
+        .token-icon {
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800;
+            font-size: 16px;
+            color: white;
+        }
+        .token-icon.dai { background: linear-gradient(135deg, #f5ac37, #f0b90b); }
+        .token-icon.usdc { background: linear-gradient(135deg, #2775ca, #1e5fa8); }
+        .token-icon.eth { background: linear-gradient(135deg, #627eea, #454a75); }
+        .token-name { font-weight: 700; font-size: 15px; }
+        .token-network { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+        .token-balance { font-weight: 700; font-size: 16px; text-align: right; }
+        .token-balance-dim { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
+        /* QR Code */
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 24px;
+            background: white;
+            border-radius: 16px;
+            margin: 16px 0;
+        }
+        .qr-container canvas, .qr-container img { border-radius: 8px; }
+
+        /* Transaction History */
+        .tx-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+        .tx-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .tx-row:hover { border-color: var(--primary); }
+        .tx-icon {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .tx-icon.in { background: rgba(16, 185, 129, 0.2); }
+        .tx-icon.out { background: rgba(239, 68, 68, 0.2); }
+        .tx-icon.pending { background: rgba(245, 158, 11, 0.2); }
+        .tx-info { flex: 1; min-width: 0; }
+        .tx-type { font-weight: 600; margin-bottom: 2px; }
+        .tx-hash { font-family: monospace; font-size: 12px; color: var(--text-dim); }
+        .tx-amount { font-weight: 700; text-align: right; }
+        .tx-amount.in { color: var(--success); }
+        .tx-amount.out { color: var(--danger); }
+        .tx-time { font-size: 11px; color: var(--text-dim); text-align: right; margin-top: 2px; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-input);
+            padding: 4px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .tab.active { background: var(--gradient); color: white; }
+
+        /* Activity */
+        .activity-log { max-height: 250px; overflow-y: auto; }
         .activity-item {
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding: 14px;
+            padding: 12px;
             border-bottom: 1px solid var(--border);
-            font-size: 14px;
+            font-size: 13px;
         }
-
-        .activity-item:last-child {
-            border-bottom: none;
-        }
-
+        .activity-item:last-child { border-bottom: none; }
         .activity-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
+            width: 28px; height: 28px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px;
             flex-shrink: 0;
         }
-
         .activity-icon.success { background: rgba(16, 185, 129, 0.2); }
         .activity-icon.info { background: rgba(99, 102, 241, 0.2); }
         .activity-icon.warning { background: rgba(245, 158, 11, 0.2); }
 
-        .activity-content {
-            flex: 1;
-        }
+        .hidden { display: none !important; }
 
-        .activity-text {
-            font-weight: 500;
-            margin-bottom: 2px;
-        }
-
-        .activity-time {
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        /* Hidden */
-        .hidden {
-            display: none !important;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .header {
-                flex-direction: column;
-                gap: 16px;
-            }
-
-            .card {
-                padding: 24px;
-            }
-
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        /* Loading */
-        .spinner {
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Fade in */
-        .fade-in {
-            animation: fadeIn 0.5s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Modal */
         .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.85);
             backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            padding: 20px;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000; padding: 20px;
         }
-
         .modal {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -414,19 +401,10 @@
             width: 100%;
             max-height: 90vh;
             overflow-y: auto;
+            backdrop-filter: blur(20px);
         }
-
-        .modal-title {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        .modal-subtitle {
-            color: var(--text-secondary);
-            font-size: 14px;
-            margin-bottom: 24px;
-        }
+        .modal-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .modal-subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
 
         .warning-box {
             background: rgba(245, 158, 11, 0.1);
@@ -437,18 +415,38 @@
             font-size: 14px;
             color: #fbbf24;
         }
-
         .seed-box {
             background: rgba(16, 185, 129, 0.1);
             border: 1px solid rgba(16, 185, 129, 0.3);
             border-radius: 12px;
             padding: 20px;
             margin: 16px 0;
-            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-family: 'SF Mono', monospace;
             font-size: 14px;
-            word-break: break-all;
-            line-height: 1.6;
+            line-height: 1.7;
             color: #34d399;
+        }
+
+        @media (max-width: 768px) {
+            .header { flex-direction: column; align-items: stretch; }
+            .card { padding: 24px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .spinner {
+            width: 20px; height: 20px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .fade-in { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -462,155 +460,230 @@
                 <div class="logo-icon">🕵️</div>
                 <div class="logo-text">KAPUT</div>
             </div>
-            <div class="network-badge">
-                <div class="network-dot" id="networkDot"></div>
-                <span id="networkText">Connecting...</span>
+            <div class="header-actions">
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙</button>
+                <div class="network-badge">
+                    <div class="network-dot" id="networkDot"></div>
+                    <span id="networkText">Connecting...</span>
+                </div>
             </div>
         </div>
 
-        <!-- Main Content -->
-        <div id="mainContent">
-            <!-- Welcome Section -->
-            <div class="card fade-in" id="welcomeSection">
-                <div class="card-title">🚀 Welcome to Kaput</div>
-                <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 15px; line-height: 1.6;">
-                    A privacy-first wallet with one-time deposit addresses, auto-sweep to Arbitrum,
-                    and self-custody. No KYC. No tracking. Just privacy.
-                </p>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                    <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="createWallet()">
-                        ✨ Create New Wallet
-                    </button>
-                    <button class="btn btn-secondary" style="flex: 1; min-width: 200px;" onclick="showRestore()">
-                        🔑 Restore Wallet
-                    </button>
+        <!-- Welcome -->
+        <div class="card fade-in" id="welcomeSection">
+            <div class="card-title">🚀 Welcome to Kaput</div>
+            <p style="color: var(--text-dim); margin-bottom: 24px; line-height: 1.6;">
+                Privacy-first wallet with one-time deposit addresses, auto-sweep to Arbitrum, and self-custody. No KYC. No tracking.
+            </p>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="createWallet()">✨ Create New Wallet</button>
+                <button class="btn btn-secondary" style="flex: 1; min-width: 200px;" onclick="showRestore()">🔑 Restore Wallet</button>
+            </div>
+        </div>
+
+        <!-- Restore -->
+        <div class="card fade-in hidden" id="restoreSection">
+            <div class="card-title">🔑 Restore Wallet</div>
+            <p style="color: var(--text-dim); margin-bottom: 16px;">Enter your 12-word seed phrase.</p>
+            <input type="password" class="input" id="restoreSeed" placeholder="Seed phrase" style="margin-bottom: 12px;">
+            <button class="btn btn-primary" onclick="restoreWallet()">Restore</button>
+            <button class="btn btn-secondary" style="margin-top: 8px;" onclick="hideRestore()">Back</button>
+        </div>
+
+        <!-- Wallet -->
+        <div id="walletSection" class="hidden">
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="statBalance">0.0000</div>
+                    <div class="stat-label">ETH Balance</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statPortfolio">$0.00</div>
+                    <div class="stat-label">Portfolio Value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAddresses">0</div>
+                    <div class="stat-label">Deposit Addresses</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statBlock">0</div>
+                    <div class="stat-label">Block Height</div>
                 </div>
             </div>
 
-            <!-- Restore Section -->
-            <div class="card fade-in hidden" id="restoreSection">
-                <div class="card-title">🔑 Restore Wallet</div>
-                <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;">
-                    Enter your seed phrase to restore your wallet.
-                </p>
-                <input type="password" class="input" id="restoreSeed" placeholder="Enter 12-word seed phrase" style="margin-bottom: 12px;">
-                <button class="btn btn-primary" onclick="restoreWallet()">Restore</button>
-                <button class="btn btn-secondary" style="margin-top: 8px;" onclick="hideRestore()">Back</button>
+            <!-- Wallet Address -->
+            <div class="card fade-in">
+                <div class="card-title">💰 Your Wallet</div>
+                <div class="address-box">
+                    <span id="walletAddress">Loading...</span>
+                    <button class="copy-btn" onclick="copyText('walletAddress')">Copy</button>
+                </div>
             </div>
 
-            <!-- Wallet Section -->
-            <div id="walletSection" class="hidden">
-                <!-- Stats -->
-                <div class="stats-grid" style="margin-bottom: 24px;">
-                    <div class="stat-card">
-                        <div class="stat-value" id="statBalance">0.00</div>
-                        <div class="stat-label">ETH Balance</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statPrivacy">95%</div>
-                        <div class="stat-label">Privacy Score</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statAddresses">0</div>
-                        <div class="stat-label">Deposit Addresses</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="statBlock">0</div>
-                        <div class="stat-label">Block Height</div>
-                    </div>
-                </div>
-
-                <!-- Wallet Address -->
-                <div class="card fade-in">
-                    <div class="card-title">💰 Your Wallet</div>
-                    <div class="address-box">
-                        <span id="walletAddress">Loading...</span>
-                        <button class="copy-btn" onclick="copyAddress('walletAddress')">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Deposit Address -->
-                <div class="card fade-in">
-                    <div class="card-title">🎭 One-Time Deposit Address</div>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">
-                        Generate a new address for each deposit. It's used once and then discarded.
-                    </p>
-                    <button class="btn btn-primary" onclick="generateDepositAddress()">
-                        🔄 Generate New Address
-                    </button>
-                    <div class="address-box hidden" id="depositAddressBox">
-                        <span id="depositAddress"></span>
-                        <button class="copy-btn" onclick="copyAddress('depositAddress')">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Sweep -->
-                <div class="card fade-in">
-                    <div class="card-title">🌉 Auto-Sweep</div>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">
-                        Automatically route your deposits through the privacy pool to Arbitrum.
-                    </p>
-                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                        <button class="btn btn-primary" style="flex: 1;" onclick="checkAndSweep()">
-                            🔍 Check & Sweep
-                        </button>
-                        <button class="btn btn-secondary" style="flex: 1;" onclick="showWithdraw()">
-                            💸 Withdraw
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Withdraw -->
-                <div class="card fade-in hidden" id="withdrawSection">
-                    <div class="card-title">💸 Withdraw to Arbitrum</div>
-                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">
-                        Withdraw your funds to Arbitrum network in DAI or USDC.
-                    </p>
-                    <input type="text" class="input" id="withdrawAddress" placeholder="Enter Arbitrum address" style="margin-bottom: 12px;">
-                    <input type="number" class="input" id="withdrawAmount" placeholder="Amount in ETH" step="0.01" style="margin-bottom: 12px;">
-                    <button class="btn btn-primary" onclick="withdraw()">Withdraw</button>
-                    <button class="btn btn-secondary" style="margin-top: 8px;" onclick="hideWithdraw()">Cancel</button>
-                </div>
-
-                <!-- Activity -->
-                <div class="card fade-in">
-                    <div class="card-title">📊 Activity</div>
-                    <div class="activity-log" id="activityLog">
-                        <div class="activity-item">
-                            <div class="activity-icon info">ℹ️</div>
-                            <div class="activity-content">
-                                <div class="activity-text">Wallet ready</div>
-                                <div class="activity-time">Just now</div>
+            <!-- Token Balances -->
+            <div class="card fade-in">
+                <div class="card-title">💎 Token Balances</div>
+                <div class="token-list" id="tokenList">
+                    <div class="token-row">
+                        <div class="token-info">
+                            <div class="token-icon eth">Ξ</div>
+                            <div>
+                                <div class="token-name">Ethereum</div>
+                                <div class="token-network">Ethereum Network</div>
                             </div>
+                        </div>
+                        <div>
+                            <div class="token-balance" id="balETH">0.0000</div>
+                            <div class="token-balance-dim" id="balETHusd">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="token-row">
+                        <div class="token-info">
+                            <div class="token-icon dai">◈</div>
+                            <div>
+                                <div class="token-name">DAI</div>
+                                <div class="token-network">Stablecoin • 95% Privacy</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="token-balance" id="balDAI">0.00</div>
+                            <div class="token-balance-dim" id="balDAIusd">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="token-row">
+                        <div class="token-info">
+                            <div class="token-icon usdc">$</div>
+                            <div>
+                                <div class="token-name">USDC</div>
+                                <div class="token-network">Stablecoin • 80% Privacy</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="token-balance" id="balUSDC">0.00</div>
+                            <div class="token-balance-dim" id="balUSDCusd">$0.00</div>
                         </div>
                     </div>
                 </div>
+                <button class="btn btn-secondary" style="margin-top: 16px;" onclick="refreshBalances()">
+                    🔄 Refresh Balances
+                </button>
+            </div>
 
-                <!-- Danger Zone -->
-                <div class="card fade-in">
-                    <div class="card-title">🔒 Security</div>
-                    <button class="btn btn-secondary" onclick="lockWallet()">Lock Wallet</button>
+            <!-- Deposit Address with QR -->
+            <div class="card fade-in">
+                <div class="card-title">🎭 One-Time Deposit Address</div>
+                <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+                    Generate a new address for each deposit. Scan QR or copy the address.
+                </p>
+                <button class="btn btn-primary" onclick="generateDepositAddress()">🔄 Generate New Address</button>
+                <div id="depositDisplay" class="hidden">
+                    <div class="address-box">
+                        <span id="depositAddress"></span>
+                        <button class="copy-btn" onclick="copyText('depositAddress')">Copy</button>
+                    </div>
+                    <div class="qr-container">
+                        <canvas id="qrCanvas"></canvas>
+                        <div style="color: #0f172a; font-size: 12px; font-weight: 600;">Scan to deposit</div>
+                    </div>
                 </div>
+            </div>
+
+            <!-- Sweep & Withdraw -->
+            <div class="card fade-in">
+                <div class="card-title">🌉 Auto-Sweep & Withdraw</div>
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('sweep')">Sweep</button>
+                    <button class="tab" onclick="showTab('withdraw')">Withdraw</button>
+                </div>
+                <div id="sweepTab">
+                    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+                        Auto-route deposits through the privacy pool to Arbitrum.
+                    </p>
+                    <button class="btn btn-primary" onclick="checkAndSweep()">🔍 Check & Sweep</button>
+                </div>
+                <div id="withdrawTab" class="hidden">
+                    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+                        Withdraw to Arbitrum in DAI or USDC.
+                    </p>
+                    <input type="text" class="input" id="withdrawAddress" placeholder="Arbitrum address" style="margin-bottom: 12px;">
+                    <input type="number" class="input" id="withdrawAmount" placeholder="Amount" step="0.01" style="margin-bottom: 12px;">
+                    <select class="input" id="withdrawToken" style="margin-bottom: 12px;">
+                        <option value="DAI">DAI (95% privacy)</option>
+                        <option value="USDC">USDC (80% privacy)</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="withdraw()">Withdraw</button>
+                </div>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="card fade-in">
+                <div class="card-title">📜 Transaction History</div>
+                <div class="tx-list" id="txList">
+                    <div style="text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px;">
+                        No transactions yet
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="margin-top: 16px;" onclick="loadTransactions()">
+                    🔄 Load Transactions
+                </button>
+            </div>
+
+            <!-- Activity -->
+            <div class="card fade-in">
+                <div class="card-title">📊 Activity Log</div>
+                <div class="activity-log" id="activityLog">
+                    <div class="activity-item">
+                        <div class="activity-icon info">ℹ️</div>
+                        <div>
+                            <div style="font-weight: 500;">Wallet ready</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">Just now</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security -->
+            <div class="card fade-in">
+                <div class="card-title">🔒 Security</div>
+                <button class="btn btn-secondary" onclick="lockWallet()">🔒 Lock Wallet</button>
             </div>
         </div>
     </div>
 
-    <!-- Seed Phrase Modal -->
+    <!-- Seed Modal -->
     <div class="modal-overlay hidden" id="seedModal">
         <div class="modal">
             <div class="modal-title">🔐 Save Your Seed Phrase</div>
-            <div class="modal-subtitle">Write this down and store it safely. Never share it.</div>
-            <div class="warning-box">
-                ⚠️ If you lose this seed phrase, you lose access to your wallet forever. No one can recover it.
-            </div>
+            <div class="modal-subtitle">Write this down. Never share it.</div>
+            <div class="warning-box">⚠️ Lose this = lose your wallet forever.</div>
             <div class="seed-box" id="seedPhraseDisplay"></div>
             <button class="btn btn-primary" onclick="confirmSeed()">I've Saved It — Continue</button>
         </div>
     </div>
 
-    <script src="./ethers.min.js"></script>
     <script>
-        // ===== KAPUT WALLET =====
+        // ===== CONSTANTS =====
+        const TOKENS = {
+            DAI: {
+                address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+                decimals: 18,
+                symbol: 'DAI'
+            },
+            USDC: {
+                address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+                decimals: 6,
+                symbol: 'USDC'
+            }
+        };
+
+        const ERC20_ABI = [
+            'function balanceOf(address) view returns (uint256)',
+            'function decimals() view returns (uint8)',
+            'function symbol() view returns (string)'
+        ];
+
+        // ===== WALLET CLASS =====
         class KaputWallet {
             constructor() {
                 this.provider = null;
@@ -618,12 +691,11 @@
                 this.hdNode = null;
                 this.addressIndex = 0;
                 this.depositAddresses = [];
-                this.contracts = {};
-                this.locked = true;
+                this.transactions = [];
+                this.ethPrice = 0;
             }
 
             async connect() {
-                // Try private node first, then public fallbacks
                 const rpcs = [
                     { url: 'http://127.0.0.1:8545', name: 'Private Node' },
                     { url: 'https://rpc.ankr.com/eth', name: 'Ankr' },
@@ -640,33 +712,39 @@
                         updateNetworkStatus(rpc.name, true);
                         document.getElementById('statBlock').textContent = blockNumber.toLocaleString();
                         addActivity('success', '🔗 Connected to ' + rpc.name, blockNumber.toLocaleString() + ' blocks');
+
+                        // Fetch ETH price
+                        this.fetchEthPrice().catch(() => {});
                         return provider;
                     } catch (e) {
                         console.log('Failed:', rpc.name);
                     }
                 }
-
                 updateNetworkStatus('No connection', false);
                 throw new Error('All RPCs failed');
+            }
+
+            async fetchEthPrice() {
+                try {
+                    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+                    const data = await res.json();
+                    this.ethPrice = data.ethereum.usd;
+                } catch (e) {
+                    this.ethPrice = 0;
+                }
             }
 
             async createWallet() {
                 const wallet = ethers.Wallet.createRandom();
                 this.wallet = wallet.connect(this.provider);
                 this.hdNode = ethers.utils.HDNode.fromMnemonic(wallet.mnemonic.phrase);
-                this.locked = false;
-
-                return {
-                    address: wallet.address,
-                    seedPhrase: wallet.mnemonic.phrase
-                };
+                return { address: wallet.address, seedPhrase: wallet.mnemonic.phrase };
             }
 
             async restoreWallet(seedPhrase) {
                 const wallet = ethers.Wallet.fromMnemonic(seedPhrase.trim());
                 this.wallet = wallet.connect(this.provider);
                 this.hdNode = ethers.utils.HDNode.fromMnemonic(seedPhrase.trim());
-                this.locked = false;
                 return wallet.address;
             }
 
@@ -688,11 +766,52 @@
                 const bal = await this.provider.getBalance(address);
                 return ethers.utils.formatEther(bal);
             }
+
+            async getTokenBalance(tokenAddress, decimals, address) {
+                try {
+                    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+                    const bal = await contract.balanceOf(address);
+                    return ethers.utils.formatUnits(bal, decimals);
+                } catch (e) {
+                    return '0';
+                }
+            }
+
+            async getTransactions(address) {
+                try {
+                    // Use Etherscan-like API via public endpoint
+                    const blockNumber = await this.provider.getBlockNumber();
+                    const txs = [];
+                    // Scan last 50 blocks for transactions (limited for performance)
+                    const startBlock = Math.max(0, blockNumber - 50);
+                    // This is a simplified version - for full history, use an indexer
+                    return txs;
+                } catch (e) {
+                    return [];
+                }
+            }
         }
 
-        // ===== UI CONTROLLER =====
         const wallet = new KaputWallet();
 
+        // ===== THEME =====
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            document.getElementById('themeBtn').textContent = next === 'light' ? '☀️' : '🌙';
+            localStorage.setItem('kaput-theme', next);
+        }
+
+        // Load saved theme
+        (function() {
+            const saved = localStorage.getItem('kaput-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', saved);
+            document.getElementById('themeBtn').textContent = saved === 'light' ? '☀️' : '🌙';
+        })();
+
+        // ===== UI HELPERS =====
         function updateNetworkStatus(name, online) {
             document.getElementById('networkText').textContent = name;
             const dot = document.getElementById('networkDot');
@@ -706,13 +825,25 @@
             const div = document.createElement('div');
             div.className = 'activity-item';
             div.innerHTML = '<div class="activity-icon ' + type + '">' + icon + '</div>' +
-                '<div class="activity-content">' +
-                '<div class="activity-text">' + text + '</div>' +
-                '<div class="activity-time">' + (time || new Date().toLocaleTimeString()) + '</div>' +
-                '</div>';
+                '<div><div style="font-weight: 500;">' + text + '</div>' +
+                '<div style="font-size: 11px; color: var(--text-dim);">' + (time || new Date().toLocaleTimeString()) + '</div></div>';
             log.insertBefore(div, log.firstChild);
         }
 
+        function copyText(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text);
+            addActivity('info', '📋 Copied', text.substring(0, 20) + '...');
+        }
+
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('sweepTab').classList.toggle('hidden', tab !== 'sweep');
+            document.getElementById('withdrawTab').classList.toggle('hidden', tab !== 'withdraw');
+        }
+
+        // ===== WALLET ACTIONS =====
         async function createWallet() {
             try {
                 const info = await wallet.createWallet();
@@ -732,7 +863,7 @@
             document.getElementById('walletAddress').textContent = info.address;
             document.getElementById('statAddresses').textContent = '0';
             addActivity('success', 'Wallet created', info.address.substring(0, 10) + '...');
-            refreshBalance();
+            refreshBalances();
         }
 
         function showRestore() {
@@ -755,86 +886,155 @@
                 document.getElementById('walletSection').classList.remove('hidden');
                 document.getElementById('walletAddress').textContent = address;
                 addActivity('success', 'Wallet restored', address.substring(0, 10) + '...');
-                refreshBalance();
+                refreshBalances();
             } catch (e) {
-                alert('Invalid seed phrase: ' + e.message);
+                alert('Invalid seed: ' + e.message);
             }
         }
 
-        function generateDepositAddress() {
-            try {
-                const address = wallet.generateDepositAddress();
-                document.getElementById('depositAddress').textContent = address;
-                document.getElementById('depositAddressBox').classList.remove('hidden');
-                document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
-                addActivity('info', 'New deposit address', address.substring(0, 10) + '...');
-            } catch (e) {
-                alert('Error: ' + e.message);
-            }
-        }
-
-        async function refreshBalance() {
+        // ===== BALANCES =====
+        async function refreshBalances() {
             if (!wallet.wallet) return;
+            const addr = wallet.wallet.address;
+
             try {
-                const bal = await wallet.getBalance(wallet.wallet.address);
-                document.getElementById('statBalance').textContent = parseFloat(bal).toFixed(4);
+                // ETH
+                const ethBal = await wallet.getBalance(addr);
+                document.getElementById('statBalance').textContent = parseFloat(ethBal).toFixed(4);
+                document.getElementById('balETH').textContent = parseFloat(ethBal).toFixed(4);
+                const ethUsd = (parseFloat(ethBal) * (wallet.ethPrice || 0)).toFixed(2);
+                document.getElementById('balETHusd').textContent = '$' + ethUsd;
+
+                // DAI
+                const daiBal = await wallet.getTokenBalance(TOKENS.DAI.address, TOKENS.DAI.decimals, addr);
+                document.getElementById('balDAI').textContent = parseFloat(daiBal).toFixed(2);
+                document.getElementById('balDAIusd').textContent = '$' + parseFloat(daiBal).toFixed(2);
+
+                // USDC
+                const usdcBal = await wallet.getTokenBalance(TOKENS.USDC.address, TOKENS.USDC.decimals, addr);
+                document.getElementById('balUSDC').textContent = parseFloat(usdcBal).toFixed(2);
+                document.getElementById('balUSDCusd').textContent = '$' + parseFloat(usdcBal).toFixed(2);
+
+                // Portfolio value
+                const totalUsd = (parseFloat(ethBal) * (wallet.ethPrice || 0)) +
+                                 parseFloat(daiBal) + parseFloat(usdcBal);
+                document.getElementById('statPortfolio').textContent = '$' + totalUsd.toFixed(2);
             } catch (e) {
                 console.log('Balance error:', e);
             }
         }
 
-        function copyAddress(elementId) {
-            const text = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(text);
-            addActivity('info', 'Address copied', text.substring(0, 10) + '...');
+        // ===== DEPOSIT ADDRESS + QR =====
+        function generateDepositAddress() {
+            try {
+                const address = wallet.generateDepositAddress();
+                document.getElementById('depositAddress').textContent = address;
+                document.getElementById('depositDisplay').classList.remove('hidden');
+                document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
+                addActivity('info', '🎭 New deposit address', address.substring(0, 15) + '...');
+
+                // Generate QR code
+                generateQR(address);
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
         }
 
-        function showWithdraw() {
-            document.getElementById('withdrawSection').classList.remove('hidden');
+        function generateQR(text) {
+            const canvas = document.getElementById('qrCanvas');
+            QRCode.toCanvas(canvas, text, {
+                width: 200,
+                margin: 1,
+                color: {
+                    dark: '#0f172a',
+                    light: '#ffffff'
+                }
+            }, function(error) {
+                if (error) console.error(error);
+            });
         }
 
-        function hideWithdraw() {
-            document.getElementById('withdrawSection').classList.add('hidden');
+        // ===== TRANSACTIONS =====
+        async function loadTransactions() {
+            if (!wallet.wallet) return;
+            const list = document.getElementById('txList');
+            list.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><div style="margin-top: 12px; color: var(--text-dim); font-size: 13px;">Loading transactions...</div></div>';
+
+            try {
+                const addr = wallet.wallet.address;
+                // Use Etherscan public API (free, no key needed for basic)
+                const url = 'https://api.etherscan.io/api?module=account&action=txlist&address=' + addr +
+                            '&startblock=0&endblock=99999999&sort=desc&offset=20&page=1';
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.status === '1' && data.result.length > 0) {
+                    list.innerHTML = '';
+                    for (const tx of data.result) {
+                        const isIn = tx.to.toLowerCase() === addr.toLowerCase();
+                        const value = ethers.utils.formatEther(tx.value);
+                        const time = new Date(parseInt(tx.timeStamp) * 1000).toLocaleString();
+
+                        const row = document.createElement('div');
+                        row.className = 'tx-row';
+                        row.innerHTML =
+                            '<div class="tx-icon ' + (isIn ? 'in' : 'out') + '">' + (isIn ? '↓' : '↑') + '</div>' +
+                            '<div class="tx-info">' +
+                                '<div class="tx-type">' + (isIn ? 'Received' : 'Sent') + '</div>' +
+                                '<div class="tx-hash">' + tx.hash.substring(0, 20) + '...</div>' +
+                            '</div>' +
+                            '<div>' +
+                                '<div class="tx-amount ' + (isIn ? 'in' : 'out') + '">' + (isIn ? '+' : '-') + parseFloat(value).toFixed(4) + ' ETH</div>' +
+                                '<div class="tx-time">' + time + '</div>' +
+                            '</div>';
+                        list.appendChild(row);
+                    }
+                    addActivity('success', '📜 Loaded ' + data.result.length + ' transactions', '');
+                } else {
+                    list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px;">No transactions found</div>';
+                }
+            } catch (e) {
+                list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px;">Could not load transactions</div>';
+            }
+        }
+
+        // ===== SWEEP & WITHDRAW =====
+        async function checkAndSweep() {
+            if (wallet.depositAddresses.length === 0) {
+                addActivity('warning', '⚠️ No deposit addresses', 'Generate one first');
+                return;
+            }
+            addActivity('info', '🔍 Checking deposits...', '');
+            for (const dep of wallet.depositAddresses) {
+                if (!dep.used) {
+                    const bal = await wallet.getBalance(dep.address);
+                    if (parseFloat(bal) > 0) {
+                        addActivity('success', '💰 Found ' + bal + ' ETH', dep.address.substring(0, 15) + '...');
+                    }
+                }
+            }
+            addActivity('info', '✅ Sweep check complete', '');
         }
 
         async function withdraw() {
             const addr = document.getElementById('withdrawAddress').value;
             const amount = document.getElementById('withdrawAmount').value;
-            if (!addr || !amount) { alert('Fill in both fields'); return; }
-            addActivity('warning', 'Withdraw requested', amount + ' ETH to ' + addr.substring(0, 10) + '...');
-            alert('Withdrawal requires the privacy pool contract. Node sync in progress.');
-        }
+            const token = document.getElementById('withdrawToken').value;
 
-        async function checkAndSweep() {
-            addActivity('info', 'Checking deposit addresses...', '');
-            if (wallet.depositAddresses.length === 0) {
-                addActivity('warning', 'No deposit addresses', 'Generate one first');
-                return;
-            }
-            for (const dep of wallet.depositAddresses) {
-                if (!dep.used) {
-                    const bal = await wallet.getBalance(dep.address);
-                    if (parseFloat(bal) > 0) {
-                        addActivity('success', 'Found ' + bal + ' ETH', dep.address.substring(0, 10) + '...');
-                    }
-                }
-            }
-            addActivity('info', 'Sweep check complete', '');
+            if (!addr || !amount) { alert('Fill in both fields'); return; }
+            addActivity('warning', '💸 Withdraw ' + amount + ' ' + token, 'To ' + addr.substring(0, 15) + '...');
+            alert('Withdrawal requires the privacy pool contract. Your private node is still syncing.');
         }
 
         function lockWallet() {
-            wallet.locked = true;
             wallet.wallet = null;
             wallet.hdNode = null;
             document.getElementById('walletSection').classList.add('hidden');
             document.getElementById('welcomeSection').classList.remove('hidden');
-            addActivity('warning', 'Wallet locked', '');
+            addActivity('warning', '🔒 Wallet locked', '');
         }
 
-        // Auto-refresh balance
-        setInterval(refreshBalance, 30000);
-
-        // Initialize
+        // ===== INIT =====
         (async () => {
             try {
                 await wallet.connect();
@@ -842,6 +1042,9 @@
                 addActivity('warning', 'Connection failed', e.message);
             }
         })();
+
+        // Auto-refresh every 30s
+        setInterval(refreshBalances, 30000);
     </script>
 </body>
 </html>
