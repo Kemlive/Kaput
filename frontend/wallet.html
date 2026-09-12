@@ -12,7 +12,6 @@
 
         :root {
             --primary: #6366f1;
-            --primary-dark: #4f46e5;
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
@@ -160,13 +159,13 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            width: 100%;
         }
 
         .btn-primary {
             background: var(--gradient);
             color: white;
             box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
-            width: 100%;
         }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(99, 102, 241, 0.6); }
 
@@ -174,16 +173,8 @@
             background: var(--bg-input);
             color: var(--text);
             border: 1px solid var(--border);
-            width: 100%;
         }
         .btn-secondary:hover { border-color: var(--primary); }
-
-        .btn-small {
-            padding: 8px 16px;
-            font-size: 13px;
-            border-radius: 10px;
-            width: auto;
-        }
 
         .input {
             width: 100%;
@@ -262,6 +253,43 @@
             letter-spacing: 0.5px;
         }
 
+        /* Auto-sweep status indicator */
+        .sweep-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #34d399;
+            margin-bottom: 16px;
+        }
+        .sweep-status.paused {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.3);
+            color: #fbbf24;
+        }
+
+        .sweep-pulse {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: sweepPulse 1.5s infinite;
+        }
+        .sweep-status.paused .sweep-pulse {
+            background: #f59e0b;
+            animation: none;
+        }
+
+        @keyframes sweepPulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+        }
+
         /* Tokens */
         .token-list { display: flex; flex-direction: column; gap: 12px; }
         .token-row {
@@ -303,9 +331,8 @@
             border-radius: 16px;
             margin: 16px 0;
         }
-        .qr-container canvas, .qr-container img { border-radius: 8px; }
 
-        /* Transaction History */
+        /* Transactions */
         .tx-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
         .tx-row {
             display: flex;
@@ -328,13 +355,14 @@
         }
         .tx-icon.in { background: rgba(16, 185, 129, 0.2); }
         .tx-icon.out { background: rgba(239, 68, 68, 0.2); }
-        .tx-icon.pending { background: rgba(245, 158, 11, 0.2); }
+        .tx-icon.sweep { background: rgba(99, 102, 241, 0.2); }
         .tx-info { flex: 1; min-width: 0; }
         .tx-type { font-weight: 600; margin-bottom: 2px; }
         .tx-hash { font-family: monospace; font-size: 12px; color: var(--text-dim); }
         .tx-amount { font-weight: 700; text-align: right; }
         .tx-amount.in { color: var(--success); }
         .tx-amount.out { color: var(--danger); }
+        .tx-amount.sweep { color: var(--primary); }
         .tx-time { font-size: 11px; color: var(--text-dim); text-align: right; margin-top: 2px; }
 
         /* Tabs */
@@ -362,7 +390,7 @@
         .tab.active { background: var(--gradient); color: white; }
 
         /* Activity */
-        .activity-log { max-height: 250px; overflow-y: auto; }
+        .activity-log { max-height: 300px; overflow-y: auto; }
         .activity-item {
             display: flex;
             align-items: flex-start;
@@ -433,16 +461,6 @@
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
-        .spinner {
-            width: 20px; height: 20px;
-            border: 3px solid rgba(255,255,255,0.2);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
         .fade-in { animation: fadeIn 0.5s ease; }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -454,7 +472,6 @@
     <div class="bg-animation"></div>
 
     <div class="container">
-        <!-- Header -->
         <div class="header">
             <div class="logo">
                 <div class="logo-icon">🕵️</div>
@@ -473,7 +490,7 @@
         <div class="card fade-in" id="welcomeSection">
             <div class="card-title">🚀 Welcome to Kaput</div>
             <p style="color: var(--text-dim); margin-bottom: 24px; line-height: 1.6;">
-                Privacy-first wallet with one-time deposit addresses, auto-sweep to Arbitrum, and self-custody. No KYC. No tracking.
+                Privacy-first wallet with one-time deposit addresses, auto-sweep, and self-custody. No KYC. No tracking.
             </p>
             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                 <button class="btn btn-primary" style="flex: 1; min-width: 200px;" onclick="createWallet()">✨ Create New Wallet</button>
@@ -492,6 +509,13 @@
 
         <!-- Wallet -->
         <div id="walletSection" class="hidden">
+
+            <!-- Auto-Sweep Status -->
+            <div class="sweep-status" id="sweepStatus">
+                <div class="sweep-pulse"></div>
+                <span id="sweepStatusText">Auto-sweep active — monitoring every 8 seconds</span>
+            </div>
+
             <!-- Stats -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -524,7 +548,7 @@
             <!-- Token Balances -->
             <div class="card fade-in">
                 <div class="card-title">💎 Token Balances</div>
-                <div class="token-list" id="tokenList">
+                <div class="token-list">
                     <div class="token-row">
                         <div class="token-info">
                             <div class="token-icon eth">Ξ</div>
@@ -574,7 +598,7 @@
             <div class="card fade-in">
                 <div class="card-title">🎭 One-Time Deposit Address</div>
                 <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
-                    Generate a new address for each deposit. Scan QR or copy the address.
+                    Generate a new address. When funds arrive, they're auto-swept to your main wallet.
                 </p>
                 <button class="btn btn-primary" onclick="generateDepositAddress()">🔄 Generate New Address</button>
                 <div id="depositDisplay" class="hidden">
@@ -589,31 +613,20 @@
                 </div>
             </div>
 
-            <!-- Sweep & Withdraw -->
+            <!-- Withdraw -->
             <div class="card fade-in">
-                <div class="card-title">🌉 Auto-Sweep & Withdraw</div>
-                <div class="tabs">
-                    <button class="tab active" onclick="showTab('sweep')">Sweep</button>
-                    <button class="tab" onclick="showTab('withdraw')">Withdraw</button>
-                </div>
-                <div id="sweepTab">
-                    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
-                        Auto-route deposits through the privacy pool to Arbitrum.
-                    </p>
-                    <button class="btn btn-primary" onclick="checkAndSweep()">🔍 Check & Sweep</button>
-                </div>
-                <div id="withdrawTab" class="hidden">
-                    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
-                        Withdraw to Arbitrum in DAI or USDC.
-                    </p>
-                    <input type="text" class="input" id="withdrawAddress" placeholder="Arbitrum address" style="margin-bottom: 12px;">
-                    <input type="number" class="input" id="withdrawAmount" placeholder="Amount" step="0.01" style="margin-bottom: 12px;">
-                    <select class="input" id="withdrawToken" style="margin-bottom: 12px;">
-                        <option value="DAI">DAI (95% privacy)</option>
-                        <option value="USDC">USDC (80% privacy)</option>
-                    </select>
-                    <button class="btn btn-primary" onclick="withdraw()">Withdraw</button>
-                </div>
+                <div class="card-title">💸 Withdraw</div>
+                <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+                    Swept funds are held in your main wallet. Send them anywhere.
+                </p>
+                <input type="text" class="input" id="withdrawAddress" placeholder="Destination address" style="margin-bottom: 12px;">
+                <input type="number" class="input" id="withdrawAmount" placeholder="Amount" step="0.01" style="margin-bottom: 12px;">
+                <select class="input" id="withdrawToken" style="margin-bottom: 12px;">
+                    <option value="ETH">ETH</option>
+                    <option value="DAI">DAI</option>
+                    <option value="USDC">USDC</option>
+                </select>
+                <button class="btn btn-primary" onclick="withdraw()">Withdraw</button>
             </div>
 
             <!-- Transaction History -->
@@ -665,25 +678,16 @@
     <script>
         // ===== CONSTANTS =====
         const TOKENS = {
-            DAI: {
-                address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
-                decimals: 18,
-                symbol: 'DAI'
-            },
-            USDC: {
-                address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-                decimals: 6,
-                symbol: 'USDC'
-            }
+            DAI: { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+            USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 }
         };
-
         const ERC20_ABI = [
             'function balanceOf(address) view returns (uint256)',
-            'function decimals() view returns (uint8)',
-            'function symbol() view returns (string)'
+            'function transfer(address to, uint256 amount) returns (bool)',
+            'function decimals() view returns (uint8)'
         ];
 
-        // ===== WALLET CLASS =====
+        // ===== WALLET =====
         class KaputWallet {
             constructor() {
                 this.provider = null;
@@ -691,7 +695,6 @@
                 this.hdNode = null;
                 this.addressIndex = 0;
                 this.depositAddresses = [];
-                this.transactions = [];
                 this.ethPrice = 0;
             }
 
@@ -707,18 +710,14 @@
                 for (const rpc of rpcs) {
                     try {
                         const provider = new ethers.providers.JsonRpcProvider(rpc.url);
-                        const blockNumber = await provider.getBlockNumber();
+                        const bn = await provider.getBlockNumber();
                         this.provider = provider;
                         updateNetworkStatus(rpc.name, true);
-                        document.getElementById('statBlock').textContent = blockNumber.toLocaleString();
-                        addActivity('success', '🔗 Connected to ' + rpc.name, blockNumber.toLocaleString() + ' blocks');
-
-                        // Fetch ETH price
+                        document.getElementById('statBlock').textContent = bn.toLocaleString();
+                        addActivity('success', '🔗 Connected to ' + rpc.name, bn.toLocaleString() + ' blocks');
                         this.fetchEthPrice().catch(() => {});
                         return provider;
-                    } catch (e) {
-                        console.log('Failed:', rpc.name);
-                    }
+                    } catch (e) { console.log('Failed:', rpc.name); }
                 }
                 updateNetworkStatus('No connection', false);
                 throw new Error('All RPCs failed');
@@ -729,23 +728,21 @@
                     const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
                     const data = await res.json();
                     this.ethPrice = data.ethereum.usd;
-                } catch (e) {
-                    this.ethPrice = 0;
-                }
+                } catch (e) { this.ethPrice = 0; }
             }
 
             async createWallet() {
-                const wallet = ethers.Wallet.createRandom();
-                this.wallet = wallet.connect(this.provider);
-                this.hdNode = ethers.utils.HDNode.fromMnemonic(wallet.mnemonic.phrase);
-                return { address: wallet.address, seedPhrase: wallet.mnemonic.phrase };
+                const w = ethers.Wallet.createRandom();
+                this.wallet = w.connect(this.provider);
+                this.hdNode = ethers.utils.HDNode.fromMnemonic(w.mnemonic.phrase);
+                return { address: w.address, seedPhrase: w.mnemonic.phrase };
             }
 
             async restoreWallet(seedPhrase) {
-                const wallet = ethers.Wallet.fromMnemonic(seedPhrase.trim());
-                this.wallet = wallet.connect(this.provider);
+                const w = ethers.Wallet.fromMnemonic(seedPhrase.trim());
+                this.wallet = w.connect(this.provider);
                 this.hdNode = ethers.utils.HDNode.fromMnemonic(seedPhrase.trim());
-                return wallet.address;
+                return w.address;
             }
 
             generateDepositAddress() {
@@ -763,48 +760,152 @@
             }
 
             async getBalance(address) {
-                const bal = await this.provider.getBalance(address);
-                return ethers.utils.formatEther(bal);
+                return ethers.utils.formatEther(await this.provider.getBalance(address));
             }
 
-            async getTokenBalance(tokenAddress, decimals, address) {
+            async getTokenBalance(tokenAddr, decimals, address) {
                 try {
-                    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-                    const bal = await contract.balanceOf(address);
-                    return ethers.utils.formatUnits(bal, decimals);
-                } catch (e) {
-                    return '0';
-                }
-            }
-
-            async getTransactions(address) {
-                try {
-                    // Use Etherscan-like API via public endpoint
-                    const blockNumber = await this.provider.getBlockNumber();
-                    const txs = [];
-                    // Scan last 50 blocks for transactions (limited for performance)
-                    const startBlock = Math.max(0, blockNumber - 50);
-                    // This is a simplified version - for full history, use an indexer
-                    return txs;
-                } catch (e) {
-                    return [];
-                }
+                    const c = new ethers.Contract(tokenAddr, ERC20_ABI, this.provider);
+                    const b = await c.balanceOf(address);
+                    return ethers.utils.formatUnits(b, decimals);
+                } catch (e) { return '0'; }
             }
         }
 
         const wallet = new KaputWallet();
 
+        // ===== AUTO-SWEEP ENGINE =====
+        class AutoSweepEngine {
+            constructor(wallet) {
+                this.wallet = wallet;
+                this.monitoring = false;
+                this.interval = null;
+                this.pollFrequency = 8000;
+                this.minSweepEth = 0.005;
+                this.minSweepToken = 1;
+                this.detectedDeposits = new Map();
+                this.onDepositDetected = null;
+                this.onSweepComplete = null;
+                this.onSweepFailed = null;
+            }
+
+            start() {
+                if (this.monitoring) return;
+                this.monitoring = true;
+                console.log('Auto-sweep engine started');
+                this.checkAllDeposits();
+                this.interval = setInterval(() => this.checkAllDeposits(), this.pollFrequency);
+            }
+
+            stop() {
+                this.monitoring = false;
+                if (this.interval) { clearInterval(this.interval); this.interval = null; }
+            }
+
+            async checkAllDeposits() {
+                if (!this.wallet.wallet || !this.wallet.provider) return;
+                if (this.wallet.depositAddresses.length === 0) return;
+
+                for (const dep of this.wallet.depositAddresses) {
+                    if (dep.used) continue;
+                    try {
+                        const ethBal = await this.wallet.provider.getBalance(dep.address);
+                        const ethAmt = parseFloat(ethers.utils.formatEther(ethBal));
+                        if (ethAmt >= this.minSweepEth) {
+                            await this.handleDeposit(dep, 'ETH', ethAmt);
+                        }
+                        const daiAmt = parseFloat(await this.wallet.getTokenBalance(
+                            TOKENS.DAI.address, TOKENS.DAI.decimals, dep.address));
+                        if (daiAmt >= this.minSweepToken) {
+                            await this.handleDeposit(dep, 'DAI', daiAmt);
+                        }
+                        const usdcAmt = parseFloat(await this.wallet.getTokenBalance(
+                            TOKENS.USDC.address, TOKENS.USDC.decimals, dep.address));
+                        if (usdcAmt >= this.minSweepToken) {
+                            await this.handleDeposit(dep, 'USDC', usdcAmt);
+                        }
+                    } catch (e) { console.error('Check failed:', e.message); }
+                }
+            }
+
+            async handleDeposit(deposit, symbol, amount) {
+                const key = deposit.address + ':' + symbol;
+                if (this.detectedDeposits.has(key)) return;
+                this.detectedDeposits.set(key, { token: symbol, amount, timestamp: Date.now() });
+                if (this.onDepositDetected) this.onDepositDetected(deposit.address, symbol, amount);
+                await this.sweepDeposit(deposit, symbol, amount);
+            }
+
+            async sweepDeposit(deposit, symbol, amount) {
+                try {
+                    const depWallet = new ethers.Wallet(deposit.privateKey, this.wallet.provider);
+                    const dest = this.wallet.wallet.address;
+                    let tx;
+
+                    if (symbol === 'ETH') {
+                        const bal = await this.wallet.provider.getBalance(deposit.address);
+                        const gp = await this.wallet.provider.getGasPrice();
+                        const gl = ethers.BigNumber.from(21000);
+                        const gasCost = gp.mul(gl);
+                        const sweepAmt = bal.sub(gasCost);
+                        if (sweepAmt.lte(0)) return;
+                        tx = await depWallet.sendTransaction({
+                            to: dest, value: sweepAmt, gasLimit: gl, gasPrice: gp
+                        });
+                    } else {
+                        const tokenAddr = symbol === 'DAI' ? TOKENS.DAI.address : TOKENS.USDC.address;
+                        const c = new ethers.Contract(tokenAddr, ERC20_ABI, depWallet);
+                        const rawBal = await c.balanceOf(deposit.address);
+                        if (rawBal.eq(0)) return;
+                        const ethBal = await this.wallet.provider.getBalance(deposit.address);
+                        if (ethBal.lt(ethers.utils.parseEther('0.001'))) {
+                            if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, 'No ETH for gas');
+                            return;
+                        }
+                        tx = await c.transfer(dest, rawBal);
+                    }
+
+                    const rcpt = await tx.wait();
+                    deposit.used = true;
+                    this.detectedDeposits.delete(deposit.address + ':' + symbol);
+                    if (this.onSweepComplete) this.onSweepComplete(deposit.address, symbol, amount, rcpt.transactionHash);
+                } catch (e) {
+                    console.error('Sweep failed:', e.message);
+                    if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, e.message);
+                }
+            }
+        }
+
+        const autoSweep = new AutoSweepEngine(wallet);
+
+        autoSweep.onDepositDetected = (address, symbol, amount) => {
+            addActivity('success', '💰 ' + amount.toFixed(4) + ' ' + symbol + ' detected', address.substring(0, 15) + '...');
+        };
+
+        autoSweep.onSweepComplete = (address, symbol, amount, txHash) => {
+            addActivity('success', '✅ Auto-swept ' + amount.toFixed(4) + ' ' + symbol, 'TX: ' + txHash.substring(0, 12) + '...');
+            refreshBalances();
+        };
+
+        autoSweep.onSweepFailed = (address, symbol, reason) => {
+            addActivity('warning', '⚠️ Sweep failed: ' + reason, address.substring(0, 15) + '...');
+        };
+
+        function startAutoSweep() {
+            autoSweep.start();
+            document.getElementById('sweepStatus').classList.remove('paused');
+            document.getElementById('sweepStatusText').textContent = 'Auto-sweep active — monitoring every 8 seconds';
+            addActivity('info', '🔍 Auto-sweep active', 'Monitoring every 8s');
+        }
+
         // ===== THEME =====
         function toggleTheme() {
             const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            const next = current === 'light' ? 'dark' : 'light';
+            const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
             html.setAttribute('data-theme', next);
             document.getElementById('themeBtn').textContent = next === 'light' ? '☀️' : '🌙';
             localStorage.setItem('kaput-theme', next);
         }
-
-        // Load saved theme
         (function() {
             const saved = localStorage.getItem('kaput-theme') || 'dark';
             document.documentElement.setAttribute('data-theme', saved);
@@ -815,8 +916,7 @@
         function updateNetworkStatus(name, online) {
             document.getElementById('networkText').textContent = name;
             const dot = document.getElementById('networkDot');
-            if (online) dot.classList.add('online');
-            else dot.classList.remove('online');
+            dot.classList.toggle('online', online);
         }
 
         function addActivity(type, text, time) {
@@ -836,13 +936,6 @@
             addActivity('info', '📋 Copied', text.substring(0, 20) + '...');
         }
 
-        function showTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('sweepTab').classList.toggle('hidden', tab !== 'sweep');
-            document.getElementById('withdrawTab').classList.toggle('hidden', tab !== 'withdraw');
-        }
-
         // ===== WALLET ACTIONS =====
         async function createWallet() {
             try {
@@ -850,9 +943,7 @@
                 document.getElementById('seedPhraseDisplay').textContent = info.seedPhrase;
                 document.getElementById('seedModal').classList.remove('hidden');
                 window._pendingWallet = info;
-            } catch (e) {
-                alert('Error: ' + e.message);
-            }
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         function confirmSeed() {
@@ -864,6 +955,7 @@
             document.getElementById('statAddresses').textContent = '0';
             addActivity('success', 'Wallet created', info.address.substring(0, 10) + '...');
             refreshBalances();
+            startAutoSweep();
         }
 
         function showRestore() {
@@ -887,44 +979,34 @@
                 document.getElementById('walletAddress').textContent = address;
                 addActivity('success', 'Wallet restored', address.substring(0, 10) + '...');
                 refreshBalances();
-            } catch (e) {
-                alert('Invalid seed: ' + e.message);
-            }
+                startAutoSweep();
+            } catch (e) { alert('Invalid seed: ' + e.message); }
         }
 
         // ===== BALANCES =====
         async function refreshBalances() {
             if (!wallet.wallet) return;
             const addr = wallet.wallet.address;
-
             try {
-                // ETH
                 const ethBal = await wallet.getBalance(addr);
                 document.getElementById('statBalance').textContent = parseFloat(ethBal).toFixed(4);
                 document.getElementById('balETH').textContent = parseFloat(ethBal).toFixed(4);
-                const ethUsd = (parseFloat(ethBal) * (wallet.ethPrice || 0)).toFixed(2);
-                document.getElementById('balETHusd').textContent = '$' + ethUsd;
+                document.getElementById('balETHusd').textContent = '$' + (parseFloat(ethBal) * (wallet.ethPrice || 0)).toFixed(2);
 
-                // DAI
                 const daiBal = await wallet.getTokenBalance(TOKENS.DAI.address, TOKENS.DAI.decimals, addr);
                 document.getElementById('balDAI').textContent = parseFloat(daiBal).toFixed(2);
                 document.getElementById('balDAIusd').textContent = '$' + parseFloat(daiBal).toFixed(2);
 
-                // USDC
                 const usdcBal = await wallet.getTokenBalance(TOKENS.USDC.address, TOKENS.USDC.decimals, addr);
                 document.getElementById('balUSDC').textContent = parseFloat(usdcBal).toFixed(2);
                 document.getElementById('balUSDCusd').textContent = '$' + parseFloat(usdcBal).toFixed(2);
 
-                // Portfolio value
-                const totalUsd = (parseFloat(ethBal) * (wallet.ethPrice || 0)) +
-                                 parseFloat(daiBal) + parseFloat(usdcBal);
-                document.getElementById('statPortfolio').textContent = '$' + totalUsd.toFixed(2);
-            } catch (e) {
-                console.log('Balance error:', e);
-            }
+                const total = (parseFloat(ethBal) * (wallet.ethPrice || 0)) + parseFloat(daiBal) + parseFloat(usdcBal);
+                document.getElementById('statPortfolio').textContent = '$' + total.toFixed(2);
+            } catch (e) { console.log('Balance error:', e); }
         }
 
-        // ===== DEPOSIT ADDRESS + QR =====
+        // ===== DEPOSIT + QR =====
         function generateDepositAddress() {
             try {
                 const address = wallet.generateDepositAddress();
@@ -932,49 +1014,30 @@
                 document.getElementById('depositDisplay').classList.remove('hidden');
                 document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
                 addActivity('info', '🎭 New deposit address', address.substring(0, 15) + '...');
-
-                // Generate QR code
-                generateQR(address);
-            } catch (e) {
-                alert('Error: ' + e.message);
-            }
-        }
-
-        function generateQR(text) {
-            const canvas = document.getElementById('qrCanvas');
-            QRCode.toCanvas(canvas, text, {
-                width: 200,
-                margin: 1,
-                color: {
-                    dark: '#0f172a',
-                    light: '#ffffff'
-                }
-            }, function(error) {
-                if (error) console.error(error);
-            });
+                QRCode.toCanvas(document.getElementById('qrCanvas'), address, {
+                    width: 200, margin: 1,
+                    color: { dark: '#0f172a', light: '#ffffff' }
+                }, err => { if (err) console.error(err); });
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         // ===== TRANSACTIONS =====
         async function loadTransactions() {
             if (!wallet.wallet) return;
             const list = document.getElementById('txList');
-            list.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><div style="margin-top: 12px; color: var(--text-dim); font-size: 13px;">Loading transactions...</div></div>';
-
+            list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">Loading...</div>';
             try {
                 const addr = wallet.wallet.address;
-                // Use Etherscan public API (free, no key needed for basic)
                 const url = 'https://api.etherscan.io/api?module=account&action=txlist&address=' + addr +
                             '&startblock=0&endblock=99999999&sort=desc&offset=20&page=1';
                 const res = await fetch(url);
                 const data = await res.json();
-
                 if (data.status === '1' && data.result.length > 0) {
                     list.innerHTML = '';
                     for (const tx of data.result) {
                         const isIn = tx.to.toLowerCase() === addr.toLowerCase();
                         const value = ethers.utils.formatEther(tx.value);
                         const time = new Date(parseInt(tx.timeStamp) * 1000).toLocaleString();
-
                         const row = document.createElement('div');
                         row.className = 'tx-row';
                         row.innerHTML =
@@ -989,44 +1052,45 @@
                             '</div>';
                         list.appendChild(row);
                     }
-                    addActivity('success', '📜 Loaded ' + data.result.length + ' transactions', '');
                 } else {
-                    list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px;">No transactions found</div>';
+                    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);font-size:14px;">No transactions found</div>';
                 }
             } catch (e) {
-                list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-dim); font-size: 14px;">Could not load transactions</div>';
+                list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);font-size:14px;">Could not load transactions</div>';
             }
         }
 
-        // ===== SWEEP & WITHDRAW =====
-        async function checkAndSweep() {
-            if (wallet.depositAddresses.length === 0) {
-                addActivity('warning', '⚠️ No deposit addresses', 'Generate one first');
-                return;
-            }
-            addActivity('info', '🔍 Checking deposits...', '');
-            for (const dep of wallet.depositAddresses) {
-                if (!dep.used) {
-                    const bal = await wallet.getBalance(dep.address);
-                    if (parseFloat(bal) > 0) {
-                        addActivity('success', '💰 Found ' + bal + ' ETH', dep.address.substring(0, 15) + '...');
-                    }
-                }
-            }
-            addActivity('info', '✅ Sweep check complete', '');
-        }
-
+        // ===== WITHDRAW =====
         async function withdraw() {
             const addr = document.getElementById('withdrawAddress').value;
             const amount = document.getElementById('withdrawAmount').value;
             const token = document.getElementById('withdrawToken').value;
-
             if (!addr || !amount) { alert('Fill in both fields'); return; }
-            addActivity('warning', '💸 Withdraw ' + amount + ' ' + token, 'To ' + addr.substring(0, 15) + '...');
-            alert('Withdrawal requires the privacy pool contract. Your private node is still syncing.');
+            if (!wallet.wallet) { alert('Wallet not unlocked'); return; }
+            try {
+                let tx;
+                if (token === 'ETH') {
+                    tx = await wallet.wallet.sendTransaction({
+                        to: addr,
+                        value: ethers.utils.parseEther(amount)
+                    });
+                } else {
+                    const tokenAddr = token === 'DAI' ? TOKENS.DAI.address : TOKENS.USDC.address;
+                    const decimals = token === 'USDC' ? 6 : 18;
+                    const c = new ethers.Contract(tokenAddr, ERC20_ABI, wallet.wallet);
+                    tx = await c.transfer(addr, ethers.utils.parseUnits(amount, decimals));
+                }
+                addActivity('warning', '💸 Withdraw sent', tx.hash.substring(0, 15) + '...');
+                await tx.wait();
+                addActivity('success', '✅ Withdraw confirmed', tx.hash.substring(0, 15) + '...');
+                refreshBalances();
+            } catch (e) {
+                addActivity('warning', '⚠️ Withdraw failed: ' + e.message, '');
+            }
         }
 
         function lockWallet() {
+            autoSweep.stop();
             wallet.wallet = null;
             wallet.hdNode = null;
             document.getElementById('walletSection').classList.add('hidden');
@@ -1036,15 +1100,11 @@
 
         // ===== INIT =====
         (async () => {
-            try {
-                await wallet.connect();
-            } catch (e) {
-                addActivity('warning', 'Connection failed', e.message);
-            }
+            try { await wallet.connect(); }
+            catch (e) { addActivity('warning', 'Connection failed', e.message); }
         })();
 
-        // Auto-refresh every 30s
-        setInterval(refreshBalances, 30000);
+        setInterval(() => { if (wallet.wallet) refreshBalances(); }, 30000);
     </script>
 </body>
 </html>
