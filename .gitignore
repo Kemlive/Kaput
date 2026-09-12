@@ -6,3 +6,5 @@ node_modules/
 coverage/
 cache/
 artifacts/
+frontend/*.bak
+frontend/test-api.sh
