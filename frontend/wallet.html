@@ -11,6 +11,7 @@
     <title>Kaput - Private Wallet</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Cpath d='M30 25v50M30 50l25-25M30 50l25 25' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
     <script src="./ethers.min.js"></script>
+    <script src="./kaput-stealth.bundle.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -323,6 +324,39 @@
                 </div>
             </div>
 
+
+            <!-- 🔒 PRIVACY CARD -->
+            <div class="card fade-in">
+                <div class="card-title">🔒 Privacy — Stealth Addresses</div>
+                <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:12px 14px;font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:14px">
+                    Stealth addresses let you receive payments privately. Share ONE meta-address. Every sender generates a unique, unlinkable address for you. Client-side only, no node required.
+                </div>
+                <button class="btn btn-primary" id="btnInitStealth" onclick="initStealthWallet()">🔑 Initialize Stealth (Sign Once)</button>
+                <div id="stealthMetaDisplay" class="hidden">
+                    <div style="font-size:13px;color:var(--text-dim);margin-top:14px;margin-bottom:6px">Your Meta-Address (share this):</div>
+                    <div class="address-box"><span id="stealthMetaAddress"></span><button class="copy-btn" onclick="copyText('stealthMetaAddress')">Copy</button></div>
+                </div>
+                <div id="stealthChainSection" class="hidden" style="margin-top:14px">
+                    <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px">Chain for stealth addresses:</label>
+                    <select class="input" id="stealthChain">
+                        <option value="ethereum">Ethereum Mainnet</option>
+                        <option value="arbitrum">Arbitrum One</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="generateStealthAddress()">➕ Generate New Stealth Address</button>
+                </div>
+                <div id="stealthList" class="hidden" style="margin-top:14px">
+                    <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Your Stealth Addresses:</div>
+                    <div id="stealthAddressesContainer"></div>
+                </div>
+                <div id="stealthClaimSection" class="hidden" style="margin-top:14px">
+                    <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Claim Funds:</div>
+                    <input type="text" class="input" id="claimFrom" placeholder="Stealth address (0x...)">
+                    <input type="text" class="input" id="claimTo" placeholder="Destination address (0x...)">
+                    <button class="btn btn-primary" onclick="claimStealthFunds()">💸 Claim Funds</button>
+                </div>
+            </div>
+            <!-- END PRIVACY CARD -->
+
             <!-- Withdraw (Collapsible) -->
             <div class="card fade-in">
                 <div class="card-title clickable" id="withdrawTitle" onclick="toggleWithdraw()">
@@ -472,6 +506,7 @@
             }
             async connect() {
                 const rpcs = [
+    { url: 'https://eth.api.pocket.network', name: 'Pocket' },
                     { url: 'http://127.0.0.1:8545', name: 'Private Node' },
                     { url: 'https://rpc.ankr.com/eth', name: 'Ankr' },
                     { url: 'https://cloudflare-eth.com', name: 'Cloudflare' },
@@ -961,6 +996,68 @@
             }
         })();
         setInterval(() => { if (wallet.wallet) refreshBalances(); }, 30000);
+
+        // ===== PRIVACY (FLUIDKEY STEALTH) =====
+        let stealthInitialized = false;
+
+        async function initStealthWallet(){
+            if (typeof window.KaputStealth === 'undefined'){ showToast('Stealth bundle loading, try again', 'error'); return; }
+            if (!wallet.wallet){ showToast('Wallet not unlocked', 'error'); return; }
+            try{
+                const btn = document.getElementById('btnInitStealth');
+                btn.disabled = true; btn.textContent = 'Deriving keys...';
+                const result = await window.KaputStealth.initStealth(wallet.wallet);
+                document.getElementById('stealthMetaAddress').textContent = result.metaAddress;
+                document.getElementById('stealthMetaDisplay').classList.remove('hidden');
+                document.getElementById('stealthChainSection').classList.remove('hidden');
+                document.getElementById('stealthList').classList.remove('hidden');
+                document.getElementById('stealthClaimSection').classList.remove('hidden');
+                btn.textContent = '✅ Stealth Initialized';
+                stealthInitialized = true;
+                showToast('Stealth initialized — no popup needed', 'success');
+            }catch(e){
+                document.getElementById('btnInitStealth').disabled = false;
+                document.getElementById('btnInitStealth').textContent = '🔑 Initialize Stealth';
+                showToast('Failed: ' + e.message, 'error');
+            }
+        }
+
+        async function generateStealthAddress(){
+            if (!stealthInitialized){ showToast('Initialize stealth first', 'error'); return; }
+            if (!window.KaputStealth){ showToast('Bundle not loaded', 'error'); return; }
+            try{
+                const chain = document.getElementById('stealthChain').value;
+                const rpcUrl = chain === 'arbitrum' ? 'https://arb-one.api.pocket.network' : 'https://eth.api.pocket.network';
+                const prov = new ethers.providers.JsonRpcProvider(rpcUrl);
+                await window.KaputStealth.generateNextAddress(prov);
+                renderStealthList();
+                showToast('New stealth address generated', 'success');
+            }catch(e){
+                showToast('Generate failed: ' + e.message, 'error');
+            }
+        }
+
+        function renderStealthList(){
+            if (!window.KaputStealth) return;
+            const accounts = window.KaputStealth.getGeneratedAccounts();
+            const container = document.getElementById('stealthAddressesContainer');
+            if (!container) return;
+            if (!accounts.length){
+                container.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No stealth addresses yet</div>';
+                return;
+            }
+            container.innerHTML = accounts.map(a =>
+                '<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;font-size:13px">' +
+                '<div><strong>#' + a.nonce + '</strong> — chain ' + (a.chainId === 0 ? 'any' : a.chainId) + '</div>' +
+                '<div style="font-family:monospace;font-size:11px;color:var(--text-dim);word-break:break-all;margin-top:4px">' + a.stealthAddress + '</div>' +
+                '</div>'
+            ).join('');
+        }
+
+        async function claimStealthFunds(){
+            showToast('Claim flow coming in Stage 2.2', 'info');
+        }
+
     </script>
 </body>
 </html>
