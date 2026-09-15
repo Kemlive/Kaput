@@ -1,4 +1,29 @@
-import './buffer-shim.js';
+// --- install fetch override before ANY module captures a reference ---
+const originalFetch = window.fetch;
+window.fetch = async function(resource, options) {
+    if (options && options.body && typeof options.body === 'string') {
+        try {
+            const body = JSON.parse(options.body);
+            if (body.method === 'eth_call' && body.params && body.params[0]) {
+                const call = body.params[0];
+                if (call.from === '0x0000000000000000000000000000000000000000') {
+                    call.from = call.to || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2';
+                    delete call.gasPrice;
+                    options.body = JSON.stringify(body);
+
+                    const urlStr = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
+                    if (urlStr.includes('llamarpc') || urlStr.includes('pocket') || urlStr.includes('eth.') || urlStr.includes('publicnode') || urlStr.includes('/rpc')) {
+                        return originalFetch('/rpc', options);
+                    }
+                }
+            }
+        } catch(e) {
+            // Ignore non-JSON bodies
+        }
+    }
+    return originalFetch(resource, options);
+};
+
 import './buffer-shim.js';
 import { pocketFetch } from './pocket-fetch.js';
 // Lethe Stealth Module — ERC-5564 compatible
@@ -20,30 +45,6 @@ import { mainnet, arbitrum, sepolia } from 'viem/chains';
 import { http as viemHttp } from 'viem';
 // Tor is handled server-side via /rpc (Caddy → lethe-rpc → Tor → PublicNode)
 
-const originalFetch = window.fetch;
-window.fetch = async function(resource, options) {
-    if (options && options.body && typeof options.body === 'string') {
-        try {
-            const body = JSON.parse(options.body);
-            if (body.method === 'eth_call' && body.params && body.params[0]) {
-                const call = body.params[0];
-                if (call.from === '0x0000000000000000000000000000000000000000') {
-                    call.from = call.to || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2';
-                    delete call.gasPrice;
-                    options.body = JSON.stringify(body);
-
-                    const urlStr = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
-                    if (urlStr.includes('llamarpc') || urlStr.includes('pocket') || urlStr.includes('eth.') || urlStr.includes('publicnode')) {
-                        return originalFetch('/rpc', options);
-                    }
-                }
-            }
-        } catch(e) {
-            // Ignore non-JSON bodies
-        }
-    }
-    return originalFetch(resource, options);
-};
 
 
 // Global fetch override to bypass RPC rejections for Safe prediction eth_calls
@@ -206,7 +207,7 @@ export async function generateNextAddress(chainName = 'ethereum') {
     stealthAddresses: [stealthAddress],
     chainId: chain.id,
     // Pocket blocks eth_call to Safe Factory — route this call through a public node
-    client: safePredictionClient,
+    transport: '/rpc', // routes through Caddy → Node → Tor → PublicNode
     useDefaultAddress: USE_DEFAULT_ADDRESS,
     safeVersion: SAFE_VERSION,
   });
