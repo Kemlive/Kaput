@@ -11,3 +11,4 @@ frontend/test-api.sh
 frontend/kaput-stealth.bundle.js
 tor-js/
 kaput-stealth.bundle.js
+IPFS_CID.txt

@@ -3,11 +3,11 @@ set -e
 cd /opt/kaput-stealth
 
 rm -rf /tmp/kaput-build
-npx esbuild kaput-stealth.js \
+npx esbuild lethe.js \
   --bundle \
   --format=esm \
   --splitting \
-  --entry-names=kaput-stealth.bundle \
+  --entry-names=lethe.bundle \
   --chunk-names=chunk-[hash] \
   --outdir=/tmp/kaput-build \
   --platform=browser \

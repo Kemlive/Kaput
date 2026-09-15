@@ -1,17 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+(function migrateLegacyKeys() {
+  const MAP = {
+    'lethe_wallet_v1':       'lethe_wallet_v1',
+    'lethe_withdraw_open':   'lethe_withdraw_open',
+    'lethe-theme':           'lethe-theme',
+    'lethe_stealth_accounts':'lethe_stealth_accounts',
+  };
+  try {
+    for (const [oldKey, newKey] of Object.entries(MAP)) {
+      if (!localStorage.getItem(newKey) && localStorage.getItem(oldKey)) {
+        localStorage.setItem(newKey, localStorage.getItem(oldKey));
+        localStorage.removeItem(oldKey);
+      }
+    }
+    // tx_history is prefixed by address — migrate each
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('lethe_tx_history_')) {
+        const newK = k.replace('lethe_tx_history_', 'lethe_tx_history_');
+        if (!localStorage.getItem(newK)) {
+          localStorage.setItem(newK, localStorage.getItem(k));
+        }
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (e) {}
+})();
+</script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0f172a">
-    <meta name="description" content="Kaput private wallet with auto-sweep and self-custody. No KYC.">
-    <meta property="og:title" content="Kaput Private Wallet">
+    <meta name="description" content="Lethe private wallet with auto-sweep and self-custody. No KYC.">
+    <meta property="og:title" content="Lethe Private Wallet">
     <meta property="og:description" content="Auto-sweep privacy wallet. Self-custody. No KYC.">
     <meta property="og:type" content="website">
-    <title>Kaput - Private Wallet</title>
+    <title>Lethe · Private Wallet</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Cpath d='M30 25v50M30 50l25-25M30 50l25 25' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
     <script src="./ethers.min.js"></script>
-    <script type="module" src="./kaput-stealth.bundle.js"></script>
+    <script type="module" src="./lethe.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -204,7 +234,7 @@
                         <path d="M30 25v50M30 50l25-25M30 50l25 25" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
-                <div class="logo-text">KAPUT</div>
+                <div class="logo-text">LETHE</div>
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
@@ -218,7 +248,7 @@
 
         <!-- Welcome -->
         <div class="card fade-in" id="welcomeSection">
-            <div class="card-title">🚀 Welcome to Kaput</div>
+            <div class="card-title">🚀 Welcome to Lethe</div>
             <p style="color: var(--text-dim); margin-bottom: 12px; line-height: 1.6; font-size: 14px;">
                 Self-custody wallet with one-time deposit addresses, auto-sweep, and encrypted local storage.
             </p>
@@ -448,8 +478,8 @@
             'function transfer(address to, uint256 amount) returns (bool)',
             'function decimals() view returns (uint8)'
         ];
-        const STORAGE_KEY = 'kaput_wallet_v1';
-        const WITHDRAW_STATE_KEY = 'kaput_withdraw_open';
+        const STORAGE_KEY = 'lethe_wallet_v1';
+        const WITHDRAW_STATE_KEY = 'lethe_withdraw_open';
 
         // ===== TOAST =====
         function showToast(message, type = 'info', duration = 3000) {
@@ -495,7 +525,7 @@
         }
 
         // ===== WALLET =====
-        class KaputWallet {
+        class LetheWallet {
             constructor() {
                 this.provider = null;
                 this.wallet = null;
@@ -587,7 +617,7 @@
                 } catch (e) { return '0'; }
             }
         }
-        const wallet = new KaputWallet();
+        const wallet = new LetheWallet();
 
         // ===== AUTO-SWEEP =====
         class AutoSweepEngine {
@@ -708,10 +738,10 @@
             const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
             html.setAttribute('data-theme', next);
             document.getElementById('themeBtn').textContent = next === 'light' ? '☀️' : '🌙';
-            localStorage.setItem('kaput-theme', next);
+            localStorage.setItem('lethe-theme', next);
         }
         (function() {
-            const saved = localStorage.getItem('kaput-theme') || 'dark';
+            const saved = localStorage.getItem('lethe-theme') || 'dark';
             document.documentElement.setAttribute('data-theme', saved);
             document.getElementById('themeBtn').textContent = saved === 'light' ? '☀️' : '🌙';
         })();
@@ -898,7 +928,7 @@
             const canvas = document.querySelector('#qrcode canvas');
             if (!canvas) { showToast('No QR yet', 'warning'); return; }
             const link = document.createElement('a');
-            link.download = 'kaput-deposit-' + Date.now() + '.png';
+            link.download = 'lethe-deposit-' + Date.now() + '.png';
             link.href = canvas.toDataURL();
             link.click();
             showToast('📥 Downloaded', 'success');
@@ -907,7 +937,7 @@
         // ===== TRANSACTIONS =====
         function saveTransaction(address, type, label, amount, token, hash) {
             if (!wallet.wallet) return;
-            const historyKey = 'kaput_tx_history_' + wallet.wallet.address.toLowerCase();
+            const historyKey = 'lethe_tx_history_' + wallet.wallet.address.toLowerCase();
             const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
             history.push({ address, type, label, amount, token, hash: hash || null, timestamp: Date.now() });
             if (history.length > 100) history.shift();
@@ -916,7 +946,7 @@
         async function loadTransactions() {
             if (!wallet.wallet) return;
             const list = document.getElementById('txList');
-            const historyKey = 'kaput_tx_history_' + wallet.wallet.address.toLowerCase();
+            const historyKey = 'lethe_tx_history_' + wallet.wallet.address.toLowerCase();
             const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
             if (history.length === 0) {
                 list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:13px;">No transactions tracked yet.<br><span style="font-size:11px;opacity:0.7;">Auto-sweep activity will appear here.</span></div>';
@@ -1002,12 +1032,12 @@
         let stealthInitialized = false;
 
         async function initStealthWallet(){
-            if (typeof window.KaputStealth === 'undefined'){ showToast('Stealth bundle loading, try again', 'error'); return; }
+            if (typeof window.Lethe === 'undefined'){ showToast('Stealth bundle loading, try again', 'error'); return; }
             if (!wallet.wallet){ showToast('Wallet not unlocked', 'error'); return; }
             try{
                 const btn = document.getElementById('btnInitStealth');
                 btn.disabled = true; btn.textContent = 'Deriving keys...';
-                const result = await window.KaputStealth.initStealth(wallet.wallet);
+                const result = await window.Lethe.initStealth(wallet.wallet);
                 document.getElementById('stealthMetaAddress').textContent = result.metaAddress;
                 document.getElementById('stealthMetaDisplay').classList.remove('hidden');
                 document.getElementById('stealthChainSection').classList.remove('hidden');
@@ -1026,17 +1056,17 @@
         async function generateStealthAddress(){
             console.log('[STEP 1] Clicked Generate');
             if (!stealthInitialized){ showToast('Initialize stealth first', 'error'); return; }
-            if (!window.KaputStealth){ showToast('Bundle not loaded', 'error'); return; }
-            console.log('[STEP 2] Checks passed, KaputStealth:', Object.keys(window.KaputStealth));
+            if (!window.Lethe){ showToast('Bundle not loaded', 'error'); return; }
+            console.log('[STEP 2] Checks passed, LetheStealth:', Object.keys(window.Lethe));
             try{
                 const chain = document.getElementById('stealthChain').value;
                 console.log('[STEP 3] Chain selected:', chain);
-                const result = await window.KaputStealth.generateNextAddress(chain);
+                const result = await window.Lethe.generateNextAddress(chain);
                 console.log('[STEP 4] generateNextAddress returned:', result);
-                const allAccounts = window.KaputStealth.getGeneratedAccounts();
+                const allAccounts = window.Lethe.getGeneratedAccounts();
                 console.log('[STEP 5] Total accounts after generation:', allAccounts.length);
                 // Persist to localStorage
-                localStorage.setItem('kaput_stealth_accounts', JSON.stringify(allAccounts));
+                localStorage.setItem('lethe_stealth_accounts', JSON.stringify(allAccounts));
                 renderStealthList();
                 console.log('[STEP 6] Rendered list');
                 showToast('New stealth address generated', 'success');
@@ -1053,8 +1083,8 @@
         }
 
         function renderStealthList(){
-            if (!window.KaputStealth) return;
-            const accounts = window.KaputStealth.getGeneratedAccounts();
+            if (!window.Lethe) return;
+            const accounts = window.Lethe.getGeneratedAccounts();
             const container = document.getElementById('stealthAddressesContainer');
             if (!container) return;
             if (!accounts.length){
@@ -1063,7 +1093,7 @@
             }
             container.innerHTML = accounts.map(a =>
                 '<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;font-size:13px">' +
-                '<div><strong>' + (window.KAPUT_CHAIN_LABELS?.[a.chainName] || {1:'Ethereum Mainnet',42161:'Arbitrum One',11155111:'Sepolia Testnet'}[a.chainId] || ('Chain ' + a.chainId)) + '</strong> · Address ' + (a.nonce + 1) + '</div>' +
+                '<div><strong>' + (window.LETHE_CHAIN_LABELS?.[a.chainName] || {1:'Ethereum Mainnet',42161:'Arbitrum One',11155111:'Sepolia Testnet'}[a.chainId] || ('Chain ' + a.chainId)) + '</strong> · Address ' + (a.nonce + 1) + '</div>' +
                 '<div style="font-family:monospace;font-size:11px;color:var(--text-dim);word-break:break-all;margin-top:4px">' + a.stealthAddress + '</div>' +
                 '</div>'
             ).join('');
@@ -1100,10 +1130,10 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.disabled = true;
     btn.textContent = '⏳ Claiming...';
     try {
-      if (!window.KaputStealth?.claimFunds) {
+      if (!window.Lethe?.claimFunds) {
         throw new Error('claimFunds not available — rebuild the bundle');
       }
-      const result = await window.KaputStealth.claimFunds(stealthVal, destVal);
+      const result = await window.Lethe.claimFunds(stealthVal, destVal);
       console.log('[CLAIM] Success:', result);
       alert('Claimed! Tx: ' + result.hash + '\nValue: ' + result.value + ' wei');
     } catch (err) {

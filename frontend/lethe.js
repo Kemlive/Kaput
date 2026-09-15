@@ -1,7 +1,7 @@
 import './buffer-shim.js';
 import './buffer-shim.js';
 import { pocketFetch } from './pocket-fetch.js';
-// Kaput Stealth Module — ERC-5564 compatible
+// Lethe Stealth Module — ERC-5564 compatible
 import {
   generateKeysFromSignature,
   extractViewingPrivateKeyNode,
@@ -100,19 +100,29 @@ let viewingPublicKey = null;
 // Security migration: remove any plaintext private keys from old format
 (() => {
   try {
-    const raw = localStorage.getItem('kaput.generatedAccounts');
+    const raw = localStorage.getItem('lethe.generatedAccounts');
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.some(a => a && a.stealthPrivateKey)) {
-      console.warn('[SECURITY] Wiping localStorage: old format contained plaintext private keys');
-      localStorage.removeItem('kaput.generatedAccounts');
+      console.warn('[LETHE] Wiping localStorage: old format contained plaintext private keys');
+      localStorage.removeItem('lethe.generatedAccounts');
     }
   } catch (e) { /* ignore */ }
 })();
 
+// Migrate legacy 'kaput.*' storage keys on first load
+(() => {
+  try {
+    if (!localStorage.getItem('lethe.generatedAccounts') && localStorage.getItem('lethe.generatedAccounts')) {
+      localStorage.setItem('lethe.generatedAccounts', localStorage.getItem('lethe.generatedAccounts'));
+      localStorage.removeItem('lethe.generatedAccounts');
+    }
+  } catch (e) {}
+})();
+
 let generatedAccounts = (() => {
   try {
-    const raw = localStorage.getItem('kaput.generatedAccounts');
+    const raw = localStorage.getItem('lethe.generatedAccounts');
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 })();
@@ -128,7 +138,7 @@ function persistAccounts() {
       chainId: a.chainId,
       chainName: a.chainName,
     }));
-    localStorage.setItem('kaput.generatedAccounts', JSON.stringify(sanitized));
+    localStorage.setItem('lethe.generatedAccounts', JSON.stringify(sanitized));
   } catch (e) {
     console.warn('Failed to persist accounts:', e);
   }
@@ -148,10 +158,10 @@ function privateKeyToCompressedPubKey(privKey) {
   return toHex(pub);
 }
 
-export async function initStealth(kaputWallet, pin = '0000') {
-  const address = await kaputWallet.getAddress();
+export async function initStealth(walletClient, pin = '0000') {
+  const address = await walletClient.getAddress();
   const { message } = generateFluidkeyMessage({ pin, address });
-  const signature = await kaputWallet.signMessage(message);
+  const signature = await walletClient.signMessage(message);
   userKeys = generateKeysFromSignature(signature);
   viewingKeyNode = extractViewingPrivateKeyNode(userKeys.viewingPrivateKey);
 
@@ -279,7 +289,7 @@ export async function claimFunds(stealthAddress, destination) {
   return { hash, value, gasCost, chain: account.chainName };
 }
 
-window.KaputStealth = {
+window.Lethe = {
   initStealth,
   getMetaAddress,
   generateNextAddress,
