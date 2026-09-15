@@ -391,22 +391,11 @@
 
             <div class="card fade-in">
                 <div class="card-title">💎 Token Balances</div>
-                <div class="token-list">
-                    <div class="token-row">
-                        <div class="token-info"><div class="token-icon eth">Ξ</div><div><div class="token-name">Ethereum</div><div class="token-network">Ethereum Network</div></div></div>
-                        <div><div class="token-balance" id="balETH">0.0000</div><div class="token-balance-dim" id="balETHusd">$0.00</div></div>
-                    </div>
-                    <div class="token-row">
-                        <div class="token-info"><div class="token-icon dai">◈</div><div><div class="token-name">DAI</div><div class="token-network">Stablecoin (mainnet)</div></div></div>
-                        <div><div class="token-balance" id="balDAI">0.00</div><div class="token-balance-dim" id="balDAIusd">$0.00</div></div>
-                    </div>
-                    <div class="token-row">
-                        <div class="token-info"><div class="token-icon usdc">$</div><div><div class="token-name">USDC</div><div class="token-network">Stablecoin (mainnet)</div></div></div>
-                        <div><div class="token-balance" id="balUSDC">0.00</div><div class="token-balance-dim" id="balUSDCusd">$0.00</div></div>
-                    </div>
+                <div class="token-list" id="tokenList">
+                    <!-- dynamically rendered by refreshBalances() -->
                 </div>
-                <div style="margin-top: 12px; padding: 10px 12px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 10px; font-size: 12px; color: var(--text-dim); line-height: 1.5;">
-                    DAI and USDC live on Ethereum mainnet. On Sepolia testnet, they show as N/A.
+                <div id="tokenNote" style="margin-top: 12px; padding: 10px 12px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 10px; font-size: 12px; color: var(--text-dim); line-height: 1.5;">
+                    Balances reflect the stealth chain selected above.
                 </div>
                 <button class="btn btn-secondary" style="margin-top: 14px;" onclick="refreshBalances()">🔄 Refresh Balances</button>
             </div>
@@ -1640,6 +1629,180 @@ document.addEventListener('DOMContentLoaded', () => {
     wire(); setTimeout(wire, 800);
   }
   setInterval(wire, 2000);
+})();
+</script>
+
+
+<script>
+/* LETHE_CHAIN_AWARE_BALANCES */
+(function() {
+  // Token registry per chain — must match lethe.js TOKENS_BY_CHAIN
+  const CHAIN_TOKENS = {
+    1: {
+      label: 'Ethereum Mainnet',
+      tokens: [
+        { sym: 'ETH',  name: 'Ethereum',  network: 'Ethereum Network',    icon: 'Ξ', cls: 'eth',  native: true },
+        { sym: 'USDT', name: 'Tether',    network: 'Stablecoin (mainnet)', icon: '₮', cls: 'usdt', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+        { sym: 'USDC', name: 'USDC',      network: 'Stablecoin (mainnet)', icon: '$', cls: 'usdc', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+        { sym: 'DAI',  name: 'DAI',       network: 'Stablecoin (mainnet)', icon: '◈', cls: 'dai',  address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+      ],
+    },
+    42161: {
+      label: 'Arbitrum One',
+      tokens: [
+        { sym: 'ETH',  name: 'Ethereum',  network: 'Arbitrum One',        icon: 'Ξ', cls: 'eth',  native: true },
+        { sym: 'USDT', name: 'Tether',    network: 'Stablecoin (Arbitrum)', icon: '₮', cls: 'usdt', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6 },
+        { sym: 'USDC', name: 'USDC',      network: 'Stablecoin (Arbitrum)', icon: '$', cls: 'usdc', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6 },
+        { sym: 'DAI',  name: 'DAI',       network: 'Stablecoin (Arbitrum)', icon: '◈', cls: 'dai',  address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18 },
+      ],
+    },
+    11155111: {
+      label: 'Sepolia Testnet',
+      tokens: [
+        { sym: 'ETH',  name: 'Sepolia ETH', network: 'Sepolia Testnet',    icon: 'Ξ', cls: 'eth',  native: true },
+        { sym: 'USDC', name: 'USDC',        network: 'Testnet USDC (Circle)', icon: '$', cls: 'usdc', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6 },
+      ],
+    },
+  };
+
+  const CHAIN_KEY_TO_ID = { ethereum: 1, arbitrum: 42161, sepolia: 11155111 };
+
+  const ERC20_ABI_MIN = [
+    { name: 'balanceOf', type: 'function', stateMutability: 'view',
+      inputs: [{ name: 'a', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  ];
+
+  function getActiveChainId() {
+    const sel = document.getElementById('stealthChain');
+    if (!sel) return 1;
+    return CHAIN_KEY_TO_ID[sel.value] || 1;
+  }
+
+  function getWalletAddress() {
+    // Read the address from the "Your Wallet" card
+    const cards = document.querySelectorAll('.card');
+    for (const card of cards) {
+      const t = (card.querySelector('.card-title') || {}).textContent || '';
+      if (/your wallet/i.test(t)) {
+        const m = card.innerText.match(/0x[a-fA-F0-9]{40}/);
+        if (m) return m[0];
+      }
+    }
+    return null;
+  }
+
+  function renderSkeleton(chainId) {
+    const list = document.getElementById('tokenList');
+    if (!list) return;
+    const cfg = CHAIN_TOKENS[chainId];
+    if (!cfg) { list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:10px">No tokens defined for this chain.</div>'; return; }
+    list.innerHTML = cfg.tokens.map(t => `
+      <div class="token-row" data-sym="${t.sym}">
+        <div class="token-info">
+          <div class="token-icon ${t.cls}">${t.icon}</div>
+          <div><div class="token-name">${t.name}</div><div class="token-network">${t.network}</div></div>
+        </div>
+        <div>
+          <div class="token-balance" id="bal_${t.sym}">—</div>
+          <div class="token-balance-dim" id="balusd_${t.sym}">—</div>
+        </div>
+      </div>
+    `).join('');
+    const note = document.getElementById('tokenNote');
+    if (note) note.textContent = `Balances for ${cfg.label} (chain ${chainId}). Click a row to prefill the Withdraw card.`;
+  }
+
+  async function updateBalances(chainId, addr) {
+    const cfg = CHAIN_TOKENS[chainId];
+    if (!cfg || !window.ethers) return;
+
+    // Route everything through our own /rpc proxy — no external RPC
+    const chainKey = chainId === 11155111 ? 'sepolia'
+                   : chainId === 42161    ? 'arbitrum'
+                   : 'ethereum';
+    const proxyUrl = new URL('/rpc', window.location.origin).href + '?chain=' + chainKey;
+
+    // ethers 5.x: use the URL with query string directly
+    const provider = new ethers.providers.JsonRpcProvider(proxyUrl);
+
+    for (const t of cfg.tokens) {
+      const balEl = document.getElementById('bal_' + t.sym);
+      if (!balEl) continue;
+      try {
+        if (t.native) {
+          const b = await provider.getBalance(addr);
+          balEl.textContent = ethers.utils.formatEther(b).slice(0, 8);
+        } else {
+          const c = new ethers.Contract(t.address, ERC20_ABI_MIN, provider);
+          const b = await c.balanceOf(addr);
+          balEl.textContent = ethers.utils.formatUnits(b, t.decimals);
+        }
+      } catch (e) {
+        balEl.textContent = '—';
+        console.warn('[LETHE] balance read failed for', t.sym, e.message);
+      }
+    }
+  }
+
+  async function refresh() {
+    const chainId = getActiveChainId();
+    const addr = getWalletAddress();
+    if (!addr) return;
+    renderSkeleton(chainId);
+    await updateBalances(chainId, addr);
+  }
+
+  // Observe stealth chain changes
+  window.addEventListener('load', () => {
+    setTimeout(refresh, 800);
+    const sel = document.getElementById('stealthChain');
+    if (sel) sel.addEventListener('change', () => setTimeout(refresh, 200));
+    // Also refresh every 15s for new deposits
+    setInterval(refresh, 15000);
+    // Click a row → prefill Withdraw card
+    document.addEventListener('click', (ev) => {
+      const row = ev.target.closest && ev.target.closest('#tokenList .token-row');
+      if (!row) return;
+      const sym = row.dataset.sym;
+      if (typeof window.setWithdrawToken === 'function') window.setWithdrawToken(sym);
+    });
+  });
+
+  // Expose for the existing "Refresh Balances" button
+  window.refreshBalances = refresh;
+})();
+</script>
+
+
+<script>
+/* LETHE_CLAIM_TOKEN_CHAIN_AWARE */
+(function() {
+  const CHAIN_TOKENS_UI = {
+    1:        ['eth', 'usdt', 'usdc', 'dai'],
+    42161:    ['eth', 'usdt', 'usdc', 'dai'],
+    11155111: ['eth', 'usdc'],
+  };
+  const CHAIN_KEY_TO_ID = { ethereum: 1, arbitrum: 42161, sepolia: 11155111 };
+  const LABELS = { eth: 'ETH', usdt: 'USDT', usdc: 'USDC', dai: 'DAI' };
+
+  function sync() {
+    const sel = document.getElementById('stealthChain');
+    const claim = document.getElementById('claimToken');
+    if (!sel || !claim) return;
+    const chainId = CHAIN_KEY_TO_ID[sel.value] || 1;
+    const allowed = CHAIN_TOKENS_UI[chainId] || ['eth'];
+
+    // Rebuild options preserving current selection if still valid
+    const prev = claim.value;
+    claim.innerHTML = allowed.map(s => `<option value="${s}">${LABELS[s]}</option>`).join('');
+    if (allowed.includes(prev)) claim.value = prev;
+  }
+
+  window.addEventListener('load', () => {
+    sync();
+    const sel = document.getElementById('stealthChain');
+    if (sel) sel.addEventListener('change', sync);
+  });
 })();
 </script>
 
