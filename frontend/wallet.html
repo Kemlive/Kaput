@@ -11,7 +11,7 @@
     <title>Kaput - Private Wallet</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366f1'/%3E%3Cpath d='M30 25v50M30 50l25-25M30 50l25 25' stroke='white' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
     <script src="./ethers.min.js"></script>
-    <script src="./kaput-stealth.bundle.js" defer></script>
+    <script type="module" src="./kaput-stealth.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -341,6 +341,7 @@
                     <select class="input" id="stealthChain">
                         <option value="ethereum">Ethereum Mainnet</option>
                         <option value="arbitrum">Arbitrum One</option>
+                        <option value="sepolia">Sepolia Testnet</option>
                     </select>
                     <button class="btn btn-secondary" onclick="generateStealthAddress()">➕ Generate New Stealth Address</button>
                 </div>
@@ -352,7 +353,7 @@
                     <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Claim Funds:</div>
                     <input type="text" class="input" id="claimFrom" placeholder="Stealth address (0x...)">
                     <input type="text" class="input" id="claimTo" placeholder="Destination address (0x...)">
-                    <button class="btn btn-primary" onclick="claimStealthFunds()">💸 Claim Funds</button>
+                    <button class="btn btn-primary" onclick="claimStealthFunds()" id="claimFundsBtn">💸 Claim Funds</button>
                 </div>
             </div>
             <!-- END PRIVACY CARD -->
@@ -1023,17 +1024,31 @@
         }
 
         async function generateStealthAddress(){
+            console.log('[STEP 1] Clicked Generate');
             if (!stealthInitialized){ showToast('Initialize stealth first', 'error'); return; }
             if (!window.KaputStealth){ showToast('Bundle not loaded', 'error'); return; }
+            console.log('[STEP 2] Checks passed, KaputStealth:', Object.keys(window.KaputStealth));
             try{
                 const chain = document.getElementById('stealthChain').value;
-                const rpcUrl = chain === 'arbitrum' ? 'https://arb-one.api.pocket.network' : 'https://eth.api.pocket.network';
-                const prov = new ethers.providers.JsonRpcProvider(rpcUrl);
-                await window.KaputStealth.generateNextAddress(prov);
+                console.log('[STEP 3] Chain selected:', chain);
+                const result = await window.KaputStealth.generateNextAddress(chain);
+                console.log('[STEP 4] generateNextAddress returned:', result);
+                const allAccounts = window.KaputStealth.getGeneratedAccounts();
+                console.log('[STEP 5] Total accounts after generation:', allAccounts.length);
+                // Persist to localStorage
+                localStorage.setItem('kaput_stealth_accounts', JSON.stringify(allAccounts));
                 renderStealthList();
+                console.log('[STEP 6] Rendered list');
                 showToast('New stealth address generated', 'success');
             }catch(e){
+                console.error('[ERROR] Stealth generate failed:', e);
+                console.error('[ERROR] Stack:', e.stack);
                 showToast('Generate failed: ' + e.message, 'error');
+                // Show error inline too
+                const container = document.getElementById('stealthAddressesContainer');
+                if (container) {
+                    container.innerHTML = '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:12px;font-size:12px;color:#ef4444">Generate failed: ' + e.message + '</div>';
+                }
             }
         }
 
@@ -1048,7 +1063,7 @@
             }
             container.innerHTML = accounts.map(a =>
                 '<div style="background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;font-size:13px">' +
-                '<div><strong>#' + a.nonce + '</strong> — chain ' + (a.chainId === 0 ? 'any' : a.chainId) + '</div>' +
+                '<div><strong>' + (window.KAPUT_CHAIN_LABELS?.[a.chainName] || {1:'Ethereum Mainnet',42161:'Arbitrum One',11155111:'Sepolia Testnet'}[a.chainId] || ('Chain ' + a.chainId)) + '</strong> · Address ' + (a.nonce + 1) + '</div>' +
                 '<div style="font-family:monospace;font-size:11px;color:var(--text-dim);word-break:break-all;margin-top:4px">' + a.stealthAddress + '</div>' +
                 '</div>'
             ).join('');
@@ -1059,5 +1074,97 @@
         }
 
     </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('claimFundsBtn');
+  if (!btn) { console.warn('[CLAIM] Button not found'); return; }
+
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const inputs = document.querySelectorAll('input[placeholder*="0x"], input[type="text"]');
+    const stealth = Array.from(inputs).find(i => /stealth address/i.test(i.previousElementSibling?.textContent || i.placeholder || ''));
+    const dest = Array.from(inputs).find(i => /destination/i.test(i.previousElementSibling?.textContent || i.placeholder || ''));
+
+    // Fallback: grab the two 0x-prefixed inputs in the claim section
+    const claimSection = btn.closest('div')?.parentElement;
+    const claimInputs = claimSection ? claimSection.querySelectorAll('input') : [];
+    const stealthVal = stealth?.value || claimInputs[0]?.value || '';
+    const destVal = dest?.value || claimInputs[1]?.value || '';
+
+    if (!stealthVal || !destVal) {
+      alert('Enter both a stealth address and a destination address.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Claiming...';
+    try {
+      if (!window.KaputStealth?.claimFunds) {
+        throw new Error('claimFunds not available — rebuild the bundle');
+      }
+      const result = await window.KaputStealth.claimFunds(stealthVal, destVal);
+      console.log('[CLAIM] Success:', result);
+      alert('Claimed! Tx: ' + result.hash + '\nValue: ' + result.value + ' wei');
+    } catch (err) {
+      console.error('[CLAIM] Failed:', err);
+      alert('Claim failed: ' + (err.message || err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💸 Claim Funds';
+    }
+  });
+  console.log('[CLAIM] Handler attached');
+});
+</script>
+
+
+<script>
+(function autoSelectChain() {
+  const CHAIN_ID_MAP = {
+    1: 'ethereum',
+    42161: 'arbitrum',
+    11155111: 'sepolia',
+  };
+
+  function applyChain(hexOrDec) {
+    const chainId = typeof hexOrDec === 'string' && hexOrDec.startsWith('0x')
+      ? parseInt(hexOrDec, 16)
+      : Number(hexOrDec);
+    const key = CHAIN_ID_MAP[chainId];
+    const sel = document.getElementById('stealthChain');
+    if (!sel || !key) return;
+    const hasOption = Array.from(sel.options).some(o => o.value === key);
+    if (!hasOption) return;
+    if (sel.value !== key) {
+      sel.value = key;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log('[CHAIN] Auto-selected:', key, '(chainId ' + chainId + ')');
+    }
+  }
+
+  function detect() {
+    if (window.ethereum?.chainId) {
+      applyChain(window.ethereum.chainId);
+    }
+  }
+
+  // Wait for the DOM and for the wallet provider
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', detect);
+  } else {
+    detect();
+  }
+  setTimeout(detect, 800);
+  setTimeout(detect, 2500);
+
+  // React to user changing network in MetaMask
+  if (window.ethereum?.on) {
+    window.ethereum.on('chainChanged', applyChain);
+    console.log('[CHAIN] Listening for chainChanged');
+  }
+})();
+</script>
+
 </body>
 </html>
