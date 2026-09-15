@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About · Lethe</title>
+<meta name="description" content="Lethe is a self-custody wallet that hides the recipient of on-chain payments.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ctext x='50' y='68' font-size='60' font-weight='700' fill='white' text-anchor='middle' font-family='system-ui'%3EL%3C/text%3E%3C/svg%3E"><text y='.9em' font-size='90'>🌊</text></svg>">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: rgba(30, 30, 45, 0.6);
+    --border: rgba(255,255,255,0.08);
+    --text: #e8e8f0;
+    --dim: #9494a8;
+    --accent: #8b8bff;
+    --accent2: #ec4899;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 0 20px 80px;
+    min-height: 100vh;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 24px 0; border-bottom: 1px solid var(--border); margin-bottom: 40px;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+  .logo-mark {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    display: grid; place-items: center; font-weight: 700; font-size: 18px;
+  }
+  .logo-text { font-size: 22px; font-weight: 700; letter-spacing: 0.02em;
+    background: linear-gradient(135deg, #8b8bff, #ec4899);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .back { color: var(--dim); text-decoration: none; font-size: 14px; }
+  .back:hover { color: var(--text); }
+
+  h1 { font-size: 36px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+  .lead { color: var(--dim); font-size: 18px; margin-bottom: 40px; }
+  h2 { font-size: 22px; font-weight: 600; margin: 40px 0 16px; letter-spacing: -0.01em; }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+  p { margin-bottom: 14px; color: var(--text); }
+  p.dim { color: var(--dim); }
+  ul { padding-left: 20px; margin-bottom: 16px; }
+  li { margin-bottom: 6px; color: var(--text); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px 24px; margin-bottom: 16px;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td:first-child { color: var(--text); font-weight: 500; }
+  td.badge-yes { color: var(--success); font-weight: 600; }
+  td.badge-no  { color: var(--danger);  font-weight: 600; }
+  td.badge-partial { color: var(--warning); font-weight: 600; }
+
+  .step { display: flex; gap: 16px; margin-bottom: 20px; }
+  .step-num {
+    flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  }
+  .step-body h3 { margin-top: 4px; }
+  .step-body p { margin-bottom: 0; color: var(--dim); font-size: 15px; }
+
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    background: rgba(139,139,255,0.1); color: var(--accent);
+    padding: 2px 6px; border-radius: 4px; font-size: 0.9em;
+  }
+
+  .cta-row { display: flex; gap: 12px; margin-top: 40px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    font-weight: 600; font-size: 15px; transition: opacity 0.15s;
+  }
+  .btn-primary { background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; }
+  .btn-secondary { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
+  .btn:hover { opacity: 0.85; }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="/" class="logo">
+      <div class="logo-mark">L</div>
+      <div class="logo-text">LETHE</div>
+    </a>
+    <a href="/wallet.html" class="back">Launch Wallet →</a>
+  </header>
+
+  <h1>About Lethe</h1>
+  <p class="lead">A self-custody wallet that hides the recipient of on-chain payments using one-time and stealth addresses.</p>
+
+  <div class="card">
+    <strong>Honest summary:</strong> Lethe is a <em>metadata privacy</em> wallet. It breaks the on-chain link between a sender and your main wallet. It does <strong>not</strong> hide the amount, timing, or the fact that a transfer occurred. It is not a mixer. It is not a ZK privacy pool (yet).
+  </div>
+
+  <h2>How it works</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h3>You share a meta-address</h3>
+      <p>One string — <code>st:eth:02b850d4…</code> — that anyone can use to generate a fresh, unique payment address for you. Each sender gets a different address. You never share your real wallet.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h3>Sender computes a stealth address</h3>
+      <p>Their wallet combines your meta-address with a random secret. The result is a new address that only your wallet can spend from. It has no on-chain link to you.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h3>Funds arrive unlinked</h3>
+      <p>The stealth address receives the payment. On Etherscan, it looks like a random address — no connection to your main wallet, no reusable identifier.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h3>You claim on your terms</h3>
+      <p>When you're ready, you click Claim. Lethe derives the ephemeral private key on-demand from your wallet signature, signs a transfer, and sweeps the funds to your main address.</p>
+    </div>
+  </div>
+
+  <h2>What's private</h2>
+  <table>
+    <tr><th>Property</th><th>Status</th></tr>
+    <tr><td>Sender → your main wallet (direct link)</td><td class="badge-yes">Broken</td></tr>
+    <tr><td>Reuse of a payment address</td><td class="badge-yes">Prevented</td></tr>
+    <tr><td>Your browser's IP from the RPC provider</td><td class="badge-yes">Hidden (server-side Tor)</td></tr>
+    <tr><td>Your server logs</td><td class="badge-yes">Not written</td></tr>
+    <tr><td>Private keys at rest</td><td class="badge-yes">Never stored</td></tr>
+    <tr><td>Amount of the payment</td><td class="badge-no">Public</td></tr>
+    <tr><td>Timing of the payment</td><td class="badge-no">Public</td></tr>
+    <tr><td>That a payment happened</td><td class="badge-no">Public</td></tr>
+    <tr><td>Stealth-address → main-wallet link</td><td class="badge-partial">Visible at claim time</td></tr>
+    <tr><td>Full graph analysis (deposit → withdraw)</td><td class="badge-no">Not hidden — Railgun planned</td></tr>
+  </table>
+
+  <h2>What Lethe is not</h2>
+  <ul>
+    <li><strong>Not a mixer.</strong> Funds don't get pooled with anyone else's.</li>
+    <li><strong>Not anonymous.</strong> If you claim to a KYC'd exchange, that exchange knows it was you.</li>
+    <li><strong>Not audited.</strong> The code is open source, but no formal audit has been done.</li>
+    <li><strong>Not ZK-private.</strong> On-chain graph analysis can still correlate deposit and claim if amounts and timing align. True unlinkability requires a ZK pool like Railgun, which is planned.</li>
+  </ul>
+
+  <h2>Technology</h2>
+  <ul>
+    <li><strong>ERC-5564</strong> stealth addresses — the emerging standard for private payments</li>
+    <li><strong>Viem</strong> for Ethereum interaction</li>
+    <li><strong>Tor</strong> for RPC traffic — routed server-side so your browser's IP never touches the RPC provider</li>
+    <li><strong>IPFS</strong> for censorship-resistant distribution — CID <code>bafybeif5djpa…</code></li>
+    <li><strong>Tor .onion</strong> mirror for network-level privacy</li>
+  </ul>
+
+  <h2>Reaching Lethe</h2>
+  <ul>
+    <li>Clearnet: <code>https://lethewallet.com</code></li>
+    <li>Tor: <code>dsu2kj3b5qwvf4zjndf3vcsprxsx7xafxkrg6qpmummqz7auevhh33id.onion</code></li>
+    <li>IPFS: <code>ipfs://bafybeif5djpamap3xbh2fds4hlabxuej3mm7hcnvyygjdaobclaedezyvm</code></li>
+    <li>Source: <code>github.com/Kemlive/Kaput</code></li>
+  </ul>
+
+  <div class="cta-row">
+    <a href="/wallet.html" class="btn btn-primary">Launch Wallet</a>
+    <a href="https://github.com/Kemlive/Kaput" class="btn btn-secondary">View Source</a>
+  </div>
+
+  <footer>
+    Self-custody. No accounts. No KYC. No tracking. Just a browser, your keys, and math.
+  </footer>
+
+</div>
+</body>
+</html>

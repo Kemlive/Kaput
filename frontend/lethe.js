@@ -289,10 +289,25 @@ export async function claimFunds(stealthAddress, destination) {
   return { hash, value, gasCost, chain: account.chainName };
 }
 
+
+export function lockStealth() {
+  userKeys = null;
+  viewingKeyNode = null;
+  spendingPublicKey = null;
+  viewingPublicKey = null;
+  console.log('[LETHE] Stealth session keys wiped');
+}
+
+export function isUnlocked() {
+  return !!(userKeys && userKeys.spendingPrivateKey);
+}
+
 window.Lethe = {
   initStealth,
   getMetaAddress,
   generateNextAddress,
   getGeneratedAccounts,
   claimFunds,
+  lockStealth,
+  isUnlocked,
 };

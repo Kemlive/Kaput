@@ -7,7 +7,7 @@ npx esbuild frontend/lethe.js \
   --bundle --format=esm --splitting \
   --entry-names=lethe.bundle --chunk-names=chunk-[hash] \
   --outdir=/tmp/kaput-build --platform=browser \
-  --define:global=globalThis \
+  --minify --legal-comments=none --minify --legal-comments=none --define:global=globalThis \
   --define:process.env.NODE_ENV='"production"' \
   --alias:crypto=crypto-browserify \
   --alias:stream=stream-browserify \
