@@ -18,7 +18,7 @@ import { mainnet, arbitrum, sepolia } from 'viem/chains';
 
 // Custom transport that rewrites eth_call body to work around Pocket 405
 import { http as viemHttp } from 'viem';
-import { torFetch } from './tor-fetch.js';
+// Tor is handled server-side via /rpc (Caddy → lethe-rpc → Tor → PublicNode)
 
 const originalFetch = window.fetch;
 window.fetch = async function(resource, options) {
@@ -33,8 +33,8 @@ window.fetch = async function(resource, options) {
                     options.body = JSON.stringify(body);
 
                     const urlStr = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
-                    if (urlStr.includes('llamarpc') || urlStr.includes('pocket') || urlStr.includes('eth.')) {
-                        return torFetch('https://ethereum-rpc.publicnode.com', options);
+                    if (urlStr.includes('llamarpc') || urlStr.includes('pocket') || urlStr.includes('eth.') || urlStr.includes('publicnode')) {
+                        return originalFetch('/rpc', options);
                     }
                 }
             }
@@ -53,7 +53,7 @@ window.fetch = async function(resource, options) {
 // Dedicated client for Safe prediction to bypass Pocket's 405 block
 const safePredictionClient = createPublicClient({
   chain: mainnet,
-  transport: http('https://ethereum-rpc.publicnode.com', { fetchFn: torFetch })
+  transport: http('/rpc')
 });
 
 
