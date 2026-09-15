@@ -1571,5 +1571,71 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+
+
+<script>
+/* LETHE_TOKEN_ACTIONS — in-wallet only, no external links */
+(function() {
+  const TOKEN_IDS = {
+    'Ethereum': 'ETH',
+    'DAI': 'DAI',
+    'USDC': 'USDC',
+  };
+
+  function openWithdrawFor(tokenName) {
+    // Open the Withdraw card
+    const title = document.getElementById('withdrawTitle');
+    const body = document.getElementById('withdrawCollapsible');
+    if (title && body && !body.classList.contains('open')) {
+      if (typeof toggleWithdraw === 'function') toggleWithdraw();
+      else {
+        body.classList.add('open');
+        title.classList.add('open');
+      }
+    }
+    // Select the token in the dropdown
+    const sel = document.getElementById('withdrawToken');
+    const tokenId = TOKEN_IDS[tokenName] || 'ETH';
+    if (sel) {
+      for (const opt of sel.options) {
+        if (opt.value === tokenId) { sel.value = tokenId; break; }
+      }
+    }
+    // Scroll it into view
+    if (body) body.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    console.log('[LETHE] Opened withdraw for', tokenId);
+  }
+
+  function wire() {
+    const rows = document.querySelectorAll('.token-row');
+    let count = 0;
+    rows.forEach(row => {
+      if (row.dataset.letheWired === '1') return;
+      const nameEl = row.querySelector('.token-name');
+      if (!nameEl) return;
+      const name = (nameEl.textContent || '').trim();
+
+      row.dataset.letheWired = '1';
+      row.style.cursor = 'pointer';
+      row.style.transition = 'background 0.15s';
+      row.title = 'Click to send ' + name;
+      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.03)'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', () => openWithdrawFor(name));
+      count++;
+    });
+    if (count > 0) console.log('[LETHE] Wired', count, 'token rows to Withdraw');
+    return count;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { wire(); setTimeout(wire, 800); });
+  } else {
+    wire(); setTimeout(wire, 800);
+  }
+  setInterval(wire, 2000);
+})();
+</script>
+
 </body>
 </html>
