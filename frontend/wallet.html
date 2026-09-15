@@ -462,7 +462,13 @@
                     <div style="font-size:13px;color:var(--text-dim);margin-bottom:8px">Claim Funds:</div>
                     <input type="text" class="input" id="claimFrom" placeholder="Stealth address (0x...)">
                     <input type="text" class="input" id="claimTo" placeholder="Destination address (0x...)">
-                    <button class="btn btn-primary" onclick="claimStealthFunds()" id="claimFundsBtn">💸 Claim Funds</button>
+                    <select class="input" id="claimToken" style="margin-bottom:10px">
+  <option value="eth">ETH</option>
+  <option value="usdc">USDC</option>
+  <option value="usdt">USDT</option>
+  <option value="dai">DAI</option>
+</select>
+<button class="btn btn-primary" onclick="claimStealthFunds()" id="claimFundsBtn">💸 Claim Funds</button>
                 </div>
             </div>
             <!-- END PRIVACY CARD -->
@@ -1212,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.Lethe?.claimFunds) {
         throw new Error('claimFunds not available — rebuild the bundle');
       }
-      const result = await window.Lethe.claimFunds(stealthVal, destVal);
+      const result = await window.Lethe.claimFunds(stealthVal, destVal, (document.getElementById('claimToken')||{}).value || 'eth');
       console.log('[CLAIM] Success:', result);
       alert('Claimed! Tx: ' + result.hash + '\nValue: ' + result.value + ' wei');
     } catch (err) {

@@ -1,28 +1,50 @@
 // --- install fetch override before ANY module captures a reference ---
-const originalFetch = window.fetch;
-window.fetch = async function(resource, options) {
-    if (options && options.body && typeof options.body === 'string') {
-        try {
-            const body = JSON.parse(options.body);
-            if (body.method === 'eth_call' && body.params && body.params[0]) {
-                const call = body.params[0];
-                if (call.from === '0x0000000000000000000000000000000000000000') {
-                    call.from = call.to || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2';
-                    delete call.gasPrice;
-                    options.body = JSON.stringify(body);
+// Route ALL JSON-RPC POST requests through same-origin /rpc → Tor → PublicNode.
+// This is what stops the upstream RPC from correlating IP + wallet address.
+(function() {
+    const originalFetch = window.fetch;
+    window.fetch = async function(resource, options) {
+        const urlStr = typeof resource === 'string'
+            ? resource
+            : (resource && resource.url ? resource.url : '');
 
-                    const urlStr = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
-                    if (urlStr.includes('llamarpc') || urlStr.includes('pocket') || urlStr.includes('eth.') || urlStr.includes('publicnode') || urlStr.includes('/rpc')) {
-                        return originalFetch('/rpc', options);
+        // Only touch JSON-RPC POSTs that aren't already going to /rpc
+        if (options && typeof options.body === 'string' && !urlStr.includes('/rpc')) {
+            try {
+                const body = JSON.parse(options.body);
+                if (body && body.jsonrpc === '2.0' && typeof body.method === 'string') {
+                    // 1. Rewrite Safe prediction eth_call (from=0x0 → to, drop gasPrice)
+                    if (
+                        body.method === 'eth_call' &&
+                        Array.isArray(body.params) &&
+                        body.params[0] &&
+                        body.params[0].from === '0x0000000000000000000000000000000000000000'
+                    ) {
+                        const call = body.params[0];
+                        call.from = call.to || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2';
+                        delete call.gasPrice;
+                        options.body = JSON.stringify(body);
                     }
+
+                    // 2. Tag the chain so the proxy picks the right upstream
+                    const chainHint =
+                        urlStr.includes('arb-one') || urlStr.includes('arbitrum') ? 'arbitrum' :
+                        urlStr.includes('sepolia') ? 'sepolia' :
+                        'ethereum';
+
+                    // 3. Forward through our same-origin Tor proxy
+                    const proxyUrl = new URL('/rpc', window.location.origin).href;
+                    const newHeaders = Object.assign({}, options.headers || {}, { 'X-Chain': chainHint });
+                    return originalFetch(proxyUrl, Object.assign({}, options, { headers: newHeaders }));
                 }
+            } catch (e) {
+                // Not JSON-RPC — passthrough
             }
-        } catch(e) {
-            // Ignore non-JSON bodies
         }
-    }
-    return originalFetch(resource, options);
-};
+        return originalFetch(resource, options);
+    };
+})();
+
 
 import './buffer-shim.js';
 import { pocketFetch } from './pocket-fetch.js';
@@ -93,6 +115,49 @@ const CHAIN_MAP = {
   arbitrum: { id: 42161, viemChain: arbitrum, rpc: 'https://arb-one.api.pocket.network' },
   sepolia: { id: 11155111, viemChain: sepolia, rpc: 'https://ethereum-sepolia-rpc.publicnode.com' },
 };
+
+// --- Token registry for ERC-20 claims ---
+const ERC20_ABI = [
+  { name: 'balanceOf', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }] },
+  { name: 'decimals', type: 'function', stateMutability: 'view',
+    inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { name: 'symbol', type: 'function', stateMutability: 'view',
+    inputs: [], outputs: [{ name: '', type: 'string' }] },
+];
+
+// USDT's transfer() returns nothing — using the ERC20 ABI causes a decode error
+const USDT_ABI = [
+  ERC20_ABI[0],
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [] },
+  ERC20_ABI[2],
+  ERC20_ABI[3],
+];
+
+const TOKENS_BY_CHAIN = {
+  1: {
+    USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, abi: ERC20_ABI },
+    USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, abi: USDT_ABI },
+    DAI:  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, abi: ERC20_ABI },
+  },
+  42161: {
+    USDC: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6, abi: ERC20_ABI },
+    USDT: { address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6, abi: USDT_ABI },
+    DAI:  { address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18, abi: ERC20_ABI },
+  },
+  11155111: {
+    // Circle's official Sepolia USDC — for testing
+    USDC: { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6, abi: ERC20_ABI },
+    // No standard USDT on Sepolia — mint your own if testing
+  },
+};
+
 
 let userKeys = null;
 let viewingKeyNode = null;
@@ -233,7 +298,7 @@ export function getGeneratedAccounts() {
 }
 
 
-export async function claimFunds(stealthAddress, destination) {
+export async function claimFunds(stealthAddress, destination, tokenSymbol = 'eth') {
   if (!stealthAddress || !destination) throw new Error('Stealth address and destination are required');
   const account = generatedAccounts.find(
     a => a.stealthAddress.toLowerCase() === stealthAddress.toLowerCase()
@@ -243,52 +308,86 @@ export async function claimFunds(stealthAddress, destination) {
   const chain = CHAIN_MAP[account.chainName];
   if (!chain) throw new Error('Unknown chain: ' + account.chainName);
 
-  // Use PublicNode for signing flows to avoid Pocket's 405
-  const rpcUrl = account.chainName === 'sepolia'
-    ? 'https://ethereum-sepolia-rpc.publicnode.com'
-    : chain.rpc;
-
-  const publicClient = createPublicClient({
-    chain: chain.viemChain,
-    transport: http(rpcUrl),
+  // Always route through our same-origin Tor proxy
+  const proxyUrl = new URL('/rpc', window.location.origin).href;
+  const transport = http(proxyUrl, {
+    fetchFn: (url, opts) => fetch(url, {
+      ...opts,
+      headers: { ...(opts?.headers || {}), 'X-Chain': account.chainName },
+    }),
   });
 
-  const balance = await publicClient.getBalance({ address: account.stealthAddress });
-  if (balance === 0n) throw new Error('Nothing to claim at this address');
-
-  // Estimate gas for a plain ETH transfer
-  const gasPrice = await publicClient.getGasPrice();
-  const gasLimit = 21000n;
-  const gasCost = gasPrice * gasLimit;
-
-  if (balance <= gasCost) {
-    throw new Error(`Balance too low: ${formatEther(balance)} ETH cannot cover gas (${formatEther(gasCost)} ETH)`);
-  }
-
-  const value = balance - gasCost;
-
-  // Derive private key on-demand from session keys + public ephemeral key
+  const publicClient = createPublicClient({ chain: chain.viemChain, transport });
   requireUnlock();
   const { stealthPrivateKey } = generateStealthPrivateKey({
     spendingPrivateKey: userKeys.spendingPrivateKey,
     ephemeralPublicKey: account.ephemeralPublicKey,
   });
-
   const walletClient = createWalletClient({
     account: privateKeyToAccount(stealthPrivateKey),
     chain: chain.viemChain,
-    transport: http(rpcUrl),
+    transport,
   });
 
-  const hash = await walletClient.sendTransaction({
-    to: destination,
-    value,
+  const sym = String(tokenSymbol).toLowerCase();
+
+  if (sym === 'eth') {
+    const balance = await publicClient.getBalance({ address: account.stealthAddress });
+    if (balance === 0n) throw new Error('Nothing to claim at this address');
+    const gasPrice = await publicClient.getGasPrice();
+    const gasLimit = 21000n;
+    const gasCost = gasPrice * gasLimit;
+    if (balance <= gasCost) {
+      throw new Error(`Balance too low: ${formatEther(balance)} ETH cannot cover gas (${formatEther(gasCost)} ETH)`);
+    }
+    const value = balance - gasCost;
+    const hash = await walletClient.sendTransaction({ to: destination, value, gas: gasLimit, gasPrice });
+    return { hash, value, gasCost, chain: account.chainName, token: 'ETH' };
+  }
+
+  // ERC-20 path
+  const registry = TOKENS_BY_CHAIN[chain.id];
+  if (!registry) throw new Error('No tokens registered for chain ' + chain.id);
+  const token = registry[String(tokenSymbol).toUpperCase()];
+  if (!token) throw new Error(`Token ${tokenSymbol} not supported on ${account.chainName}`);
+
+  const tokenBal = await publicClient.readContract({
+    address: token.address,
+    abi: token.abi,
+    functionName: 'balanceOf',
+    args: [account.stealthAddress],
+  });
+  if (tokenBal === 0n) throw new Error(`Nothing to claim: 0 ${tokenSymbol} at this address`);
+
+  // Stealth address must hold ETH for gas — tokens alone cannot pay
+  const ethBal = await publicClient.getBalance({ address: account.stealthAddress });
+  const gasPrice = await publicClient.getGasPrice();
+  const gasLimit = 100000n;  // USDT/USDC transfers use ~65-80k, buffer for safety
+  const gasCost = gasPrice * gasLimit;
+  if (ethBal < gasCost) {
+    throw new Error(
+      `Stealth address needs ETH for gas. Send at least ${formatEther(gasCost)} ETH to ${account.stealthAddress} first, then retry.`
+    );
+  }
+
+  const hash = await walletClient.writeContract({
+    address: token.address,
+    abi: token.abi,
+    functionName: 'transfer',
+    args: [destination, tokenBal],
     gas: gasLimit,
-    gasPrice,
   });
 
-  return { hash, value, gasCost, chain: account.chainName };
+  return {
+    hash,
+    value: tokenBal,
+    decimals: token.decimals,
+    gasCost,
+    chain: account.chainName,
+    token: String(tokenSymbol).toUpperCase(),
+  };
 }
+
 
 
 export function lockStealth() {
