@@ -1806,5 +1806,39 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+
+<script>
+/* LETHE_RENDER_ON_LOAD */
+(function() {
+  function tryRender() {
+    if (!window.Lethe) return false;
+    if (typeof renderStealthList !== 'function') return false;
+    try {
+      renderStealthList();
+      const n = (JSON.parse(localStorage.getItem('lethe.generatedAccounts') || '[]')).length;
+      console.log('[LETHE] Rendered', n, 'addresses on page load');
+      return true;
+    } catch (e) {
+      console.warn('[LETHE] render on load failed:', e.message);
+      return false;
+    }
+  }
+
+  function boot() {
+    if (!tryRender()) {
+      setTimeout(tryRender, 300);
+      setTimeout(tryRender, 1000);
+      setTimeout(tryRender, 2500);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+
 </body>
 </html>
