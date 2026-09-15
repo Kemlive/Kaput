@@ -16,5 +16,10 @@
     "dotenv": "^17.4.2",
     "ethers": "^6.17.0",
     "hardhat": "^2.22.19"
+  },
+  "dependencies": {
+    "@fluidkey/stealth-account-kit": "^1.1.1",
+    "socks-proxy-agent": "^10.1.0",
+    "viem": "^2.56.5"
   }
 }
