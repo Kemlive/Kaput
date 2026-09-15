@@ -13,8 +13,8 @@ import {
 } from '@fluidkey/stealth-account-kit';
 import { privateKeyToAccount } from 'viem/accounts';
 import * as secp from '@noble/secp256k1';
-import { http, toHex, createPublicClient } from 'viem';
-import { mainnet, arbitrum } from 'viem/chains';
+import { http, toHex, createPublicClient, createWalletClient, parseEther, formatEther } from 'viem';
+import { mainnet, arbitrum, sepolia } from 'viem/chains';
 
 // Custom transport that rewrites eth_call body to work around Pocket 405
 import { http as viemHttp } from 'viem';
@@ -90,13 +90,56 @@ const THRESHOLD = 1;
 const CHAIN_MAP = {
   ethereum: { id: 1, viemChain: mainnet, rpc: 'https://eth.api.pocket.network' },
   arbitrum: { id: 42161, viemChain: arbitrum, rpc: 'https://arb-one.api.pocket.network' },
+  sepolia: { id: 11155111, viemChain: sepolia, rpc: 'https://ethereum-sepolia-rpc.publicnode.com' },
 };
 
 let userKeys = null;
 let viewingKeyNode = null;
 let spendingPublicKey = null;
 let viewingPublicKey = null;
-let generatedAccounts = [];
+// Security migration: remove any plaintext private keys from old format
+(() => {
+  try {
+    const raw = localStorage.getItem('kaput.generatedAccounts');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.some(a => a && a.stealthPrivateKey)) {
+      console.warn('[SECURITY] Wiping localStorage: old format contained plaintext private keys');
+      localStorage.removeItem('kaput.generatedAccounts');
+    }
+  } catch (e) { /* ignore */ }
+})();
+
+let generatedAccounts = (() => {
+  try {
+    const raw = localStorage.getItem('kaput.generatedAccounts');
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+})();
+
+function persistAccounts() {
+  try {
+    // Only public data is stored — no private keys, ever.
+    const sanitized = generatedAccounts.map(a => ({
+      nonce: a.nonce,
+      stealthAddress: a.stealthAddress,
+      stealthSafeAddress: a.stealthSafeAddress,
+      ephemeralPublicKey: a.ephemeralPublicKey,
+      chainId: a.chainId,
+      chainName: a.chainName,
+    }));
+    localStorage.setItem('kaput.generatedAccounts', JSON.stringify(sanitized));
+  } catch (e) {
+    console.warn('Failed to persist accounts:', e);
+  }
+}
+
+function requireUnlock() {
+  if (!userKeys?.spendingPrivateKey) {
+    throw new Error('Wallet locked. Please sign in to unlock stealth addresses.');
+  }
+}
+
 
 // Convert a hex private key → compressed public key (33 bytes, 0x02/0x03 prefix)
 function privateKeyToCompressedPubKey(privKey) {
@@ -158,21 +201,19 @@ export async function generateNextAddress(chainName = 'ethereum') {
     safeVersion: SAFE_VERSION,
   });
 
-  const { stealthPrivateKey } = generateStealthPrivateKey({
-    spendingPrivateKey: userKeys.spendingPrivateKey,
-    ephemeralPublicKey: ephemeralAccount.publicKey,
-  });
-
+  // Note: stealthPrivateKey is NOT derived here — it's only derived on-demand
+  // during claim. This keeps no private key material at rest.
   const account = {
     nonce: Number(nonce),
     stealthAddress,
     stealthSafeAddress,
-    stealthPrivateKey,
+    ephemeralPublicKey: ephemeralAccount.publicKey,
     chainId: chain.id,
     chainName,
   };
 
   generatedAccounts.push(account);
+  persistAccounts();
   return account;
 }
 
@@ -180,9 +221,68 @@ export function getGeneratedAccounts() {
   return generatedAccounts;
 }
 
+
+export async function claimFunds(stealthAddress, destination) {
+  if (!stealthAddress || !destination) throw new Error('Stealth address and destination are required');
+  const account = generatedAccounts.find(
+    a => a.stealthAddress.toLowerCase() === stealthAddress.toLowerCase()
+  );
+  if (!account) throw new Error('Stealth address not found in this wallet. Was it generated here?');
+
+  const chain = CHAIN_MAP[account.chainName];
+  if (!chain) throw new Error('Unknown chain: ' + account.chainName);
+
+  // Use PublicNode for signing flows to avoid Pocket's 405
+  const rpcUrl = account.chainName === 'sepolia'
+    ? 'https://ethereum-sepolia-rpc.publicnode.com'
+    : chain.rpc;
+
+  const publicClient = createPublicClient({
+    chain: chain.viemChain,
+    transport: http(rpcUrl),
+  });
+
+  const balance = await publicClient.getBalance({ address: account.stealthAddress });
+  if (balance === 0n) throw new Error('Nothing to claim at this address');
+
+  // Estimate gas for a plain ETH transfer
+  const gasPrice = await publicClient.getGasPrice();
+  const gasLimit = 21000n;
+  const gasCost = gasPrice * gasLimit;
+
+  if (balance <= gasCost) {
+    throw new Error(`Balance too low: ${formatEther(balance)} ETH cannot cover gas (${formatEther(gasCost)} ETH)`);
+  }
+
+  const value = balance - gasCost;
+
+  // Derive private key on-demand from session keys + public ephemeral key
+  requireUnlock();
+  const { stealthPrivateKey } = generateStealthPrivateKey({
+    spendingPrivateKey: userKeys.spendingPrivateKey,
+    ephemeralPublicKey: account.ephemeralPublicKey,
+  });
+
+  const walletClient = createWalletClient({
+    account: privateKeyToAccount(stealthPrivateKey),
+    chain: chain.viemChain,
+    transport: http(rpcUrl),
+  });
+
+  const hash = await walletClient.sendTransaction({
+    to: destination,
+    value,
+    gas: gasLimit,
+    gasPrice,
+  });
+
+  return { hash, value, gasCost, chain: account.chainName };
+}
+
 window.KaputStealth = {
   initStealth,
   getMetaAddress,
   generateNextAddress,
   getGeneratedAccounts,
+  claimFunds,
 };
