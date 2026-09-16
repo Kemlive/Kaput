@@ -23,6 +23,7 @@ npx esbuild frontend/lethe.js \
 
 sudo rm -f /var/www/kaput/lethe*.js /var/www/kaput/chunk-*.js
 sudo cp -r /tmp/kaput-build/* /var/www/kaput/
+sudo cp /opt/kaput-stealth/frontend/wallet.html /var/www/kaput/wallet.html
 sudo chown -R caddy:caddy /var/www/kaput/
 sudo find /var/www/kaput -type f -exec chmod 644 {} \;
 sudo systemctl reload caddy

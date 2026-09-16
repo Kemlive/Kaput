@@ -40,7 +40,7 @@
     <meta property="og:type" content="website">
     <title>Lethe · Private Wallet</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ctext x='50' y='68' font-size='60' font-weight='700' fill='white' text-anchor='middle' font-family='system-ui'%3EL%3C/text%3E%3C/svg%3E">
-    <script src="./ethers.min.js?v=2"></script>
+    <script src="./ethers.min.js?v=6"></script>
     <script type="module" src="./lethe.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -629,7 +629,7 @@
                 ];
                 for (const rpc of rpcs) {
                     try {
-                        const provider = new ethers.providers.JsonRpcProvider(rpc.url);
+                        const provider = new ethers.JsonRpcProvider(rpc.url);
                         const bn = await provider.getBlockNumber();
                         this.provider = provider;
                         updateNetworkStatus(rpc.name, true);
@@ -652,9 +652,9 @@
                 } catch (e) { this.ethPrice = 0; }
             }
             async createFromSeed(seedPhrase, password) {
-                const w = ethers.Wallet.fromMnemonic(seedPhrase);
+                const w = ethers.Wallet.fromPhrase(seedPhrase);
                 this.wallet = w.connect(this.provider);
-                this.hdNode = ethers.utils.HDNode.fromMnemonic(seedPhrase);
+                this.hdNode = ethers.HDNodeWallet.fromPhrase(seedPhrase);
                 this.password = password;
                 await this.save();
                 return w.address;
@@ -673,9 +673,9 @@
                 if (!stored) return null;
                 const encrypted = JSON.parse(stored);
                 const data = await decryptData(encrypted, password);
-                const w = ethers.Wallet.fromMnemonic(data.seedPhrase);
+                const w = ethers.Wallet.fromPhrase(data.seedPhrase);
                 this.wallet = w.connect(this.provider);
-                this.hdNode = ethers.utils.HDNode.fromMnemonic(data.seedPhrase);
+                this.hdNode = ethers.HDNodeWallet.fromPhrase(data.seedPhrase);
                 this.addressIndex = data.addressIndex || 0;
                 this.depositAddresses = data.depositAddresses || [];
                 this.password = password;
@@ -690,11 +690,11 @@
                 this.save().catch(e => console.error('Save failed:', e));
                 return child.address;
             }
-            async getBalance(address) { return ethers.utils.formatEther(await this.provider.getBalance(address)); }
+            async getBalance(address) { return ethers.formatEther(await this.provider.getBalance(address)); }
             async getTokenBalance(tokenAddr, decimals, address) {
                 try {
                     const c = new ethers.Contract(tokenAddr, ERC20_ABI, this.provider);
-                    return ethers.utils.formatUnits(await c.balanceOf(address), decimals);
+                    return ethers.formatUnits(await c.balanceOf(address), decimals);
                 } catch (e) { return '0'; }
             }
         }
@@ -746,7 +746,7 @@
             }
 
             providerFor(chainKey) {
-                return new ethers.providers.JsonRpcProvider(
+                return new ethers.JsonRpcProvider(
                     window.location.origin + '/rpc?chain=' + chainKey
                 );
             }
@@ -776,7 +776,7 @@
                     try {
                         // Native ETH
                         const ethBal = await provider.getBalance(dep.address);
-                        const ethAmt = parseFloat(ethers.utils.formatEther(ethBal));
+                        const ethAmt = parseFloat(ethers.formatEther(ethBal));
                         if (ethAmt >= this.minSweepEth) {
                             await this.handleDeposit(dep, 'ETH', ethAmt, chainKey, tokens, provider);
                         }
@@ -786,11 +786,11 @@
                             const cfg = tokens[sym];
                             if (!cfg.address) continue;
                             try {
-                                const iface = new ethers.utils.Interface(['function balanceOf(address) view returns (uint256)']);
+                                const iface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
                                 const data = iface.encodeFunctionData('balanceOf', [dep.address]);
                                 const raw = await provider.call({ to: cfg.address, data });
                                 const bal = iface.decodeFunctionResult('balanceOf', raw)[0];
-                                const amt = parseFloat(ethers.utils.formatUnits(bal, cfg.decimals));
+                                const amt = parseFloat(ethers.formatUnits(bal, cfg.decimals));
                                 if (amt >= this.minSweepToken) {
                                     await this.handleDeposit(dep, sym, amt, chainKey, tokens, provider);
                                 }
@@ -864,22 +864,22 @@
                             value: bal,  // estimate with full balance so refunds aren't an issue
                         });
                         // Add 25% headroom
-                        gasLimit = gasLimit.mul(125).div(100);
+                        gasLimit = (gasLimit * 125n / 100n);
                     } catch (_) {
-                        gasLimit = ethers.BigNumber.from(gasLimitBase);
+                        gasLimit = BigInt(gasLimitBase);
                     }
                     const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
                     // Buffer the gas price for Arbitrum's L1 data component
-                    const bufferedGasPrice = isArbitrum ? gasPrice.mul(120).div(100) : gasPrice;
-                    const gasCost = bufferedGasPrice.mul(gasLimit);
-                    if (bal.lte(gasCost)) {
-                        const need = ethers.utils.formatEther(gasCost);
-                        const have = ethers.utils.formatEther(bal);
+                    const bufferedGasPrice = isArbitrum ? (gasPrice * 120n / 100n) : gasPrice;
+                    const gasCost = (bufferedGasPrice * gasLimit);
+                    if (bal <= gasCost) {
+                        const need = ethers.formatEther(gasCost);
+                        const have = ethers.formatEther(bal);
                         throw new Error('ETH balance ' + have + ' too low for gas ' + need + ' on ' + chainKey);
                     }
-                    const value = bal.sub(gasCost);
+                    const value = (bal - gasCost);
                     // Ensure we're not sending a dust amount
-                    if (value.lte(0)) {
+                    if (value <= 0n) {
                         throw new Error('Sweep value would be zero after gas');
                     }
                     const txReq = {
@@ -903,14 +903,14 @@
                     const contract = new ethers.Contract(cfg.address, ABI, depWallet);
 
                     const balWei = await contract.balanceOf(deposit.address);
-                    if (balWei.eq(0)) throw new Error('Token balance is zero');
+                    if (balWei === 0n) throw new Error('Token balance is zero');
 
                     // Must have ETH for gas
                     const ethBal = await provider.getBalance(deposit.address);
                     const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
-                    const gasLimit = ethers.BigNumber.from(120000);
-                    const gasCost = gasPrice.mul(gasLimit);
-                    if (ethBal.lt(gasCost)) {
+                    const gasLimit = 120000n;
+                    const gasCost = (gasPrice * gasLimit);
+                    if (ethBal < gasCost) {
                         throw new Error('Deposit address has no ETH for gas — send ETH first');
                     }
 
@@ -1231,11 +1231,11 @@
                     const activeChainEth = (window.getActiveChain && window.getActiveChain())
                                        || (document.getElementById('stealthChain') || {}).value
                                        || 'ethereum';
-                    const ethProvider = new ethers.providers.JsonRpcProvider(
+                    const ethProvider = new ethers.JsonRpcProvider(
                         window.location.origin + '/rpc?chain=' + activeChainEth
                     );
                     const ethSigner = wallet.wallet.connect(ethProvider);
-                    tx = await ethSigner.sendTransaction({ to: addr, value: ethers.utils.parseEther(amount) });
+                    tx = await ethSigner.sendTransaction({ to: addr, value: ethers.parseEther(amount) });
                 } else {
                     const tokenAddr = token === 'DAI'  ? TOKENS.DAI.address
                                     : token === 'USDT' ? TOKENS.USDT.address
@@ -1245,12 +1245,12 @@
                     const activeChain = (window.getActiveChain && window.getActiveChain())
                                        || (document.getElementById('stealthChain') || {}).value
                                        || 'ethereum';
-                    const chainProvider = new ethers.providers.JsonRpcProvider(
+                    const chainProvider = new ethers.JsonRpcProvider(
                         window.location.origin + '/rpc?chain=' + activeChain
                     );
                     const chainSigner = wallet.wallet.connect(chainProvider);
                     const c = new ethers.Contract(tokenAddr, abi, chainSigner);
-                    tx = await c.transfer(addr, ethers.utils.parseUnits(amount, decimals));
+                    tx = await c.transfer(addr, ethers.parseUnits(amount, decimals));
                 }
                 showToast('💸 Withdraw sent', 'success');
                 addActivity('warning', '💸 Withdraw sent', tx.hash.substring(0, 15) + '...');
@@ -1863,7 +1863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const proxyUrl = new URL('/rpc', window.location.origin).href + '?chain=' + chainKey;
 
     // ethers 5.x: use the URL with query string directly
-    const provider = new ethers.providers.JsonRpcProvider(proxyUrl);
+    const provider = new ethers.JsonRpcProvider(proxyUrl);
 
     for (const t of cfg.tokens) {
       const balEl = document.getElementById('bal_' + t.sym);
@@ -1871,11 +1871,11 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         if (t.native) {
           const b = await provider.getBalance(addr);
-          balEl.textContent = ethers.utils.formatEther(b).slice(0, 8);
+          balEl.textContent = ethers.formatEther(b).slice(0, 8);
         } else {
           const c = new ethers.Contract(t.address, ERC20_ABI_MIN, provider);
           const b = await c.balanceOf(addr);
-          balEl.textContent = ethers.utils.formatUnits(b, t.decimals);
+          balEl.textContent = ethers.formatUnits(b, t.decimals);
         }
       } catch (e) {
         balEl.textContent = '—';
@@ -2021,7 +2021,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const MC_ABI = ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)'];
-  const ERC20_IFACE = new ethers.utils.Interface(['function balanceOf(address) view returns (uint256)']);
+  const ERC20_IFACE = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
 
   let renderedKey = null;  // e.g. "ethereum:0xabc..."
   let fetching = false;
@@ -2065,7 +2065,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function fmt(sym, raw, decimals) {
-    const s = ethers.utils.formatUnits(raw, decimals);
+    const s = ethers.formatUnits(raw, decimals);
     // Trim
     if (decimals === 18) {
       // ETH-style: 6 decimals max
@@ -2111,7 +2111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfg = CHAINS[chain];
     if (!cfg) return {};
 
-    const provider = new ethers.providers.JsonRpcProvider(
+    const provider = new ethers.JsonRpcProvider(
       window.location.origin + '/rpc?chain=' + chain,
       { chainId: cfg.chainId, name: chain }
     );
@@ -2449,7 +2449,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function fmtEth(wei) {
-    return parseFloat(ethers.utils.formatEther(wei)).toFixed(8);
+    return parseFloat(ethers.formatEther(wei)).toFixed(8);
   }
 
   function shortAddr(a) {
@@ -2469,13 +2469,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = tEl.value;
 
     if (!to || !amount) return { error: 'Fill in destination and amount' };
-    if (!ethers.utils.isAddress(to)) return { error: 'Invalid destination address' };
+    if (!ethers.isAddress(to)) return { error: 'Invalid destination address' };
 
     const cfg = TOKENS_LOCAL[token];
     if (!cfg) return { error: 'Token ' + token + ' not configured' };
 
     const chainKey = activeChain();
-    const provider = new ethers.providers.JsonRpcProvider(
+    const provider = new ethers.JsonRpcProvider(
       window.location.origin + '/rpc?chain=' + chainKey
     );
     const signer = wallet.wallet.connect(provider);
@@ -2486,13 +2486,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let txReq;
     let tokenBal;
     if (cfg.native) {
-      try { txReq = { to, value: ethers.utils.parseEther(amount) }; }
+      try { txReq = { to, value: ethers.parseEther(amount) }; }
       catch (_) { return { error: 'Invalid amount' }; }
     } else {
       const abi = token === 'USDT' ? USDT_ABI : ERC20_ABI;
       const c = new ethers.Contract(cfg.address, abi, signer);
       let rawAmount;
-      try { rawAmount = ethers.utils.parseUnits(amount, cfg.decimals); }
+      try { rawAmount = ethers.parseUnits(amount, cfg.decimals); }
       catch (_) { return { error: 'Invalid amount' }; }
 
       try {
@@ -2501,10 +2501,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return { error: 'Cannot read ' + token + ' balance', detail: e.message };
       }
 
-      if (tokenBal.lt(rawAmount)) {
+      if (tokenBal < rawAmount) {
         return {
           error: 'Not enough ' + token,
-          detail: 'You have ' + ethers.utils.formatUnits(tokenBal, cfg.decimals) +
+          detail: 'You have ' + ethers.formatUnits(tokenBal, cfg.decimals) +
                   ' ' + token + ', trying to send ' + amount
         };
       }
@@ -2515,19 +2515,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Estimate gas
     let gasLimit;
     try {
-      gasLimit = await signer.estimateGas(txReq);
+      gasLimit = await provider.estimateGas(Object.assign({}, txReq, { from: signer.address }));
     } catch (e) {
       return { error: 'Cannot estimate gas for this transaction', detail: (e.reason || e.message || '').slice(0, 200) };
     }
 
     // Fee data (EIP-1559 preferred)
-    const feeData = await signer.getFeeData();
+    const feeData = await provider.getFeeData();
     const maxFee = feeData.maxFeePerGas || feeData.gasPrice;
     const priority = feeData.maxPriorityFeePerGas;
     const is1559 = !!feeData.maxFeePerGas;
 
-    const gasCost = gasLimit.mul(maxFee);
-    const sufficient = ethBal.gte(gasCost);
+    const gasCost = (gasLimit * maxFee);
+    const sufficient = (ethBal >= gasCost);
 
     return {
       ok: true, token, amount, to, chainKey,
@@ -2552,8 +2552,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const gasLimit = est.gasLimit.toString();
-    const maxGwei = parseFloat(ethers.utils.formatUnits(est.maxFee, 'gwei')).toFixed(2);
-    const priorityGwei = est.priority ? parseFloat(ethers.utils.formatUnits(est.priority, 'gwei')).toFixed(2) : null;
+    const maxGwei = parseFloat(ethers.formatUnits(est.maxFee, 'gwei')).toFixed(2);
+    const priorityGwei = est.priority ? parseFloat(ethers.formatUnits(est.priority, 'gwei')).toFixed(2) : null;
     const feeEth = fmtEth(est.gasCost);
     const haveEth = fmtEth(est.ethBal);
     const row = (label, value, opts) => {
@@ -2576,7 +2576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         row('Network fee (est.)', feeEth + ' ETH', { border: true, bold: true }) +
         row('Your ETH balance', haveEth, { bold: !est.sufficient ? false : true }) +
         (est.tokenBal && !TOKENS_LOCAL[est.token].native
-          ? row('Your ' + est.token + ' balance', ethers.utils.formatUnits(est.tokenBal, TOKENS_LOCAL[est.token].decimals))
+          ? row('Your ' + est.token + ' balance', ethers.formatUnits(est.tokenBal, TOKENS_LOCAL[est.token].decimals))
           : '') +
       '</table>' +
       '<div style="margin-top:10px;font-size:11px;color:var(--text-dim);line-height:1.4">' +
@@ -2604,7 +2604,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.disabled = true;
     btn.textContent = 'Sending…';
     try {
-      const provider = new ethers.providers.JsonRpcProvider(
+      const provider = new ethers.JsonRpcProvider(
         window.location.origin + '/rpc?chain=' + est.chainKey
       );
       const signer = wallet.wallet.connect(provider);
@@ -2612,11 +2612,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let tx;
       if (cfg.native) {
-        tx = await signer.sendTransaction({ to: est.to, value: ethers.utils.parseEther(est.amount) });
+        tx = await signer.sendTransaction({ to: est.to, value: ethers.parseEther(est.amount) });
       } else {
         const abi = est.token === 'USDT' ? USDT_ABI : ERC20_ABI;
         const c = new ethers.Contract(cfg.address, abi, signer);
-        tx = await c.transfer(est.to, ethers.utils.parseUnits(est.amount, cfg.decimals));
+        tx = await c.transfer(est.to, ethers.parseUnits(est.amount, cfg.decimals));
       }
 
       if (typeof showToast === 'function') showToast('💸 Sent, waiting for confirmation…', 'success');
@@ -2625,7 +2625,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Try to read actual fee paid
       let actualFee = null;
       if (receipt && receipt.gasUsed && receipt.effectiveGasPrice) {
-        actualFee = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+        actualFee = receipt.gasUsed * receipt.effectiveGasPrice;
       }
 
       document.getElementById('withdrawAddress').value = '';
@@ -2738,7 +2738,7 @@ document.addEventListener('DOMContentLoaded', () => {
         || 'ethereum';
   }
   function provider() {
-    return new ethers.providers.JsonRpcProvider(
+    return new ethers.JsonRpcProvider(
       window.location.origin + '/rpc?chain=' + chainKey()
     );
   }
@@ -2809,7 +2809,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let html = '<table style="width:100%;border-collapse:collapse">';
     shown.forEach(({ d, i }, n) => {
       const b = bals[n];
-      const eth = b ? parseFloat(ethers.utils.formatEther(b)) : null;
+      const eth = b ? parseFloat(ethers.formatEther(b)) : null;
       const balStr = eth === null ? '—' : (eth === 0 ? '0.000000' : eth.toFixed(6));
       const isCur = i === current.i;
       const bg = isCur ? 'background:rgba(139,92,246,0.10);border:1px solid rgba(139,92,246,0.35)' : 'background:rgba(255,255,255,0.02);border:1px solid transparent';
@@ -2858,7 +2858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const bals = await Promise.all(list.map(async ({ d }) => {
       try { return await timeout(p.getBalance(d.address), TIMEOUT); } catch (_) { return null; }
     }));
-    const withDust = bals.filter(b => b && !b.isZero()).length;
+    const withDust = bals.filter(b => b && !(b === 0n)).length;
 
     let html = '<div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">' +
       list.length + ' burned' + (withDust ? ' · <span style="color:#f59e0b">' + withDust + ' with dust</span>' : '') +
@@ -2871,7 +2871,7 @@ document.addEventListener('DOMContentLoaded', () => {
       html += '<div style="margin-top:10px">';
       html += list.map(({ d, i }, n) => {
         const b = bals[n];
-        const eth = b ? parseFloat(ethers.utils.formatEther(b)) : null;
+        const eth = b ? parseFloat(ethers.formatEther(b)) : null;
         const meta = ar[d.address.toLowerCase()] || {};
         const chains = (meta.chains || []).join(', ') || '—';
         const balStr = eth === null ? '—' : (eth === 0 ? '0.000000' : eth.toFixed(6) + ' ETH');
