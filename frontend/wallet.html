@@ -476,8 +476,9 @@
                     <input type="number" class="input" id="withdrawAmount" placeholder="Amount" step="0.01" style="margin-bottom: 10px;">
                     <select class="input" id="withdrawToken" style="margin-bottom: 12px;">
                         <option value="ETH">ETH</option>
-                        <option value="DAI">DAI</option>
+                        <option value="USDT">USDT</option>
                         <option value="USDC">USDC</option>
+                        <option value="DAI">DAI</option>
                     </select>
                     <button class="btn btn-primary" onclick="withdraw()">Withdraw</button>
                 </div>
@@ -544,9 +545,15 @@
     <script>
         // ===== CONSTANTS =====
         const TOKENS = {
-            DAI: { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
-            USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 }
+            DAI:  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+            USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+            USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 }
         };
+        const USDT_ABI = [
+            'function balanceOf(address) view returns (uint256)',
+            'function transfer(address to, uint256 amount)',
+            'function decimals() view returns (uint8)'
+        ];
         const ERC20_ABI = [
             'function balanceOf(address) view returns (uint256)',
             'function transfer(address to, uint256 amount) returns (bool)',
@@ -961,9 +968,9 @@
 
         // ===== BALANCES =====
         async function refreshBalances() {
-    // Superseded by LETHE_BALANCE_V1 below — kept as a stub so old callers don't error.
-    if (window.__letheRefreshBalances) return window.__letheRefreshBalances();
-}
+            // Superseded by LETHE_BALANCE_ONE below
+            if (window.__letheRefreshBalances) return window.__letheRefreshBalances();
+        }
 
         // ===== DEPOSIT + QR =====
         function generateDepositAddress() {
@@ -1046,11 +1053,28 @@
             try {
                 let tx;
                 if (token === 'ETH') {
-                    tx = await wallet.wallet.sendTransaction({ to: addr, value: ethers.utils.parseEther(amount) });
+                    const activeChainEth = (window.getActiveChain && window.getActiveChain())
+                                       || (document.getElementById('stealthChain') || {}).value
+                                       || 'ethereum';
+                    const ethProvider = new ethers.providers.JsonRpcProvider(
+                        window.location.origin + '/rpc?chain=' + activeChainEth
+                    );
+                    const ethSigner = wallet.wallet.connect(ethProvider);
+                    tx = await ethSigner.sendTransaction({ to: addr, value: ethers.utils.parseEther(amount) });
                 } else {
-                    const tokenAddr = token === 'DAI' ? TOKENS.DAI.address : TOKENS.USDC.address;
-                    const decimals = token === 'USDC' ? 6 : 18;
-                    const c = new ethers.Contract(tokenAddr, ERC20_ABI, wallet.wallet);
+                    const tokenAddr = token === 'DAI'  ? TOKENS.DAI.address
+                                    : token === 'USDT' ? TOKENS.USDT.address
+                                    : TOKENS.USDC.address;
+                    const decimals = (token === 'USDC' || token === 'USDT') ? 6 : 18;
+                    const abi = token === 'USDT' ? USDT_ABI : ERC20_ABI;
+                    const activeChain = (window.getActiveChain && window.getActiveChain())
+                                       || (document.getElementById('stealthChain') || {}).value
+                                       || 'ethereum';
+                    const chainProvider = new ethers.providers.JsonRpcProvider(
+                        window.location.origin + '/rpc?chain=' + activeChain
+                    );
+                    const chainSigner = wallet.wallet.connect(chainProvider);
+                    const c = new ethers.Contract(tokenAddr, abi, chainSigner);
                     tx = await c.transfer(addr, ethers.utils.parseUnits(amount, decimals));
                 }
                 showToast('💸 Withdraw sent', 'success');
@@ -1828,14 +1852,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+
 <script>
-/* LETHE_BALANCE_STABLE */
+/* LETHE_BALANCE_ONE */
 (function() {
   'use strict';
 
   const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
-  const CACHE_KEY  = 'lethe_balance_cache_stable';
-  const TIMEOUT_MS = 20000;
+  const CACHE_KEY  = 'lethe_balances';
+  const TIMEOUT_MS = 25000;
 
   const CHAINS = {
     ethereum: {
@@ -1865,34 +1890,27 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   };
 
-  const MULTICALL_ABI = [
-    'function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)'
-  ];
+  const MC_ABI = ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)'];
   const ERC20_IFACE = new ethers.utils.Interface(['function balanceOf(address) view returns (uint256)']);
 
-  // ---- render state (in-memory, avoids redundant DOM rebuilds) ----
-  let renderedChain = null;   // which chain is currently in the DOM
-  let renderedAddr  = null;   // which address
-  let refreshing    = false;  // concurrency guard
+  let renderedKey = null;  // e.g. "ethereum:0xabc..."
+  let fetching = false;
 
-  function activeChain() {
-    if (window.getActiveChain) { try { return window.getActiveChain(); } catch (_) {} }
+  function chainKey() {
+    if (window.getActiveChain) { try { const c = window.getActiveChain(); if (c) return c; } catch (_) {} }
     const sel = document.getElementById('stealthChain');
     return (sel && sel.value) || 'ethereum';
   }
 
   function walletAddress() {
-    const cards = document.querySelectorAll('.card');
-    for (const c of cards) {
+    for (const c of document.querySelectorAll('.card')) {
       const title = (c.querySelector('.card-title') || {}).textContent || '';
       if (/your wallet/i.test(title)) {
         const m = c.innerText.match(/0x[a-fA-F0-9]{40}/);
         if (m) return m[0];
       }
     }
-    if (typeof wallet !== 'undefined' && wallet && wallet.wallet && wallet.wallet.address) {
-      return wallet.wallet.address;
-    }
+    if (typeof wallet !== 'undefined' && wallet && wallet.wallet && wallet.wallet.address) return wallet.wallet.address;
     return null;
   }
 
@@ -1900,185 +1918,354 @@ document.addEventListener('DOMContentLoaded', () => {
     return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
   }
 
-  // ---- cache ----
-  function cacheKey(chain, addr) { return chain + ':' + addr.toLowerCase(); }
-  function readCache() {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch (_) { return {}; }
-  }
-  function writeCache(chain, addr, balances) {
+  function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch (_) { return {}; } }
+  function writeCache(k, balances) {
     try {
       const c = readCache();
-      c[cacheKey(chain, addr)] = { at: Date.now(), balances };
+      c[k] = { at: Date.now(), balances };
       localStorage.setItem(CACHE_KEY, JSON.stringify(c));
     } catch (_) {}
   }
-  function getCached(chain, addr) {
+  function getCache(k) {
     const c = readCache();
-    const e = c[cacheKey(chain, addr)];
+    const e = c[k];
     if (!e) return null;
-    if (Date.now() - e.at > 7 * 24 * 60 * 60 * 1000) return null; // 7 days
+    if (Date.now() - e.at > 7 * 24 * 3600 * 1000) return null;
     return e.balances;
   }
 
-  // ---- DOM: build once per (chain, addr), then only update text ----
-  function buildSkeletonIfNeeded(chainKey, addr) {
+  function fmt(sym, raw, decimals) {
+    const s = ethers.utils.formatUnits(raw, decimals);
+    // Trim
+    if (decimals === 18) {
+      // ETH-style: 6 decimals max
+      const n = parseFloat(s);
+      if (n === 0) return '0.000000';
+      return n.toFixed(6);
+    }
+    // Stablecoin: 2 decimals
+    const n = parseFloat(s);
+    return n.toFixed(2);
+  }
+
+  function buildSkeleton(chain, tokens) {
     const list = document.getElementById('tokenList');
     if (!list) return;
-    const cfg = CHAINS[chainKey];
-    if (!cfg) return;
-
-    // If the DOM already matches this chain+addr, do nothing (no blink)
-    if (renderedChain === chainKey && renderedAddr === addr && list.children.length > 0) {
-      // ensure the label matches
-      const note = document.getElementById('tokenNote');
-      if (note && !note.textContent.includes(cfg.label)) {
-        note.textContent = 'Balances for ' + cfg.label + ' (chain ' + cfg.chainId + ').';
-      }
-      return;
-    }
-
-    // Otherwise, build the skeleton
-    list.innerHTML = cfg.tokens.map(t => `
+    list.innerHTML = tokens.map(t => `
       <div class="token-row" data-sym="${t.sym}">
         <div class="token-info">
           <div class="token-icon ${t.cls}">${t.icon}</div>
           <div><div class="token-name">${t.name}</div><div class="token-network">${t.network}</div></div>
         </div>
         <div>
-          <div class="token-balance" id="bal_${t.sym}">—</div>
+          <div class="token-balance" id="bal_${t.sym}" style="visibility:hidden">0.00</div>
           <div class="token-balance-dim" id="balusd_${t.sym}"></div>
         </div>
       </div>
     `).join('');
-
     const note = document.getElementById('tokenNote');
-    if (note) note.textContent = 'Balances for ' + cfg.label + ' (chain ' + cfg.chainId + ').';
-
-    renderedChain = chainKey;
-    renderedAddr  = addr;
+    const cfg = CHAINS[chain];
+    if (note && cfg) note.textContent = 'Balances for ' + cfg.label + ' (chain ' + cfg.chainId + ').';
   }
 
-  // Only touches text — never triggers a reflow of the panel
-  function setText(sym, value) {
+  // Update value — only changes text, never visibility
+  function show(sym, value) {
     const el = document.getElementById('bal_' + sym);
     if (!el) return;
     if (el.textContent !== value) el.textContent = value;
+    el.style.visibility = 'visible';
   }
 
-  // ---- fetch all balances for a chain in ONE multicall ----
-  async function fetchChainBalances(chainKey, addr) {
-    const cfg = CHAINS[chainKey];
+  // Fetch one chain: 1 multicall + 1 native in parallel
+  async function fetchAll(chain, addr) {
+    const cfg = CHAINS[chain];
     if (!cfg) return {};
 
     const provider = new ethers.providers.JsonRpcProvider(
-      window.location.origin + '/rpc?chain=' + chainKey,
-      { chainId: cfg.chainId, name: chainKey }
+      window.location.origin + '/rpc?chain=' + chain,
+      { chainId: cfg.chainId, name: chain }
     );
+
+    const native = cfg.tokens.find(t => t.native);
+    const erc20s = cfg.tokens.filter(t => !t.native);
 
     const out = {};
 
-    // Native
-    const native = cfg.tokens.find(t => t.native);
-    if (native) {
-      try {
-        const b = await withTimeout(provider.getBalance(addr), TIMEOUT_MS);
-        out[native.sym] = parseFloat(ethers.utils.formatEther(b)).toFixed(6);
-      } catch (_) {}
+    // Parallel: native + multicall
+    const [nativeBal, mcRes] = await Promise.all([
+      native ? withTimeout(provider.getBalance(addr), TIMEOUT_MS).catch(() => null) : Promise.resolve(null),
+      erc20s.length ? (async () => {
+        try {
+          const calls = erc20s.map(t => ({
+            target: t.address,
+            allowFailure: true,
+            callData: ERC20_IFACE.encodeFunctionData('balanceOf', [addr]),
+          }));
+          const mc = new ethers.Contract(MULTICALL3, MC_ABI, provider);
+          return await withTimeout(mc.aggregate3(calls), TIMEOUT_MS);
+        } catch (_) { return null; }
+      })() : Promise.resolve(null),
+    ]);
+
+    if (nativeBal) out[native.sym] = fmt(native.sym, nativeBal, 18);
+    if (mcRes) {
+      erc20s.forEach((t, i) => {
+        const r = mcRes[i];
+        if (!r || !r.success) return;
+        try {
+          const raw = ERC20_IFACE.decodeFunctionResult('balanceOf', r.returnData)[0];
+          out[t.sym] = fmt(t.sym, raw, t.decimals);
+        } catch (_) {}
+      });
     }
 
-    // ERC-20s in one call
-    const erc20s = cfg.tokens.filter(t => !t.native);
-    if (erc20s.length) {
-      try {
-        const calls = erc20s.map(t => ({
-          target: t.address,
-          allowFailure: true,
-          callData: ERC20_IFACE.encodeFunctionData('balanceOf', [addr]),
-        }));
-        const mc = new ethers.Contract(MULTICALL3, MULTICALL_ABI, provider);
-        const res = await withTimeout(mc.aggregate3(calls), TIMEOUT_MS);
-        erc20s.forEach((t, i) => {
-          const r = res[i];
-          if (!r.success) return;
-          try {
-            const raw = ERC20_IFACE.decodeFunctionResult('balanceOf', r.returnData)[0];
-            out[t.sym] = ethers.utils.formatUnits(raw, t.decimals);
-          } catch (_) {}
-        });
-      } catch (_) {}
-    }
     return out;
   }
 
-  // ---- public: refresh ----
-  async function refreshBalances() {
-    const chainKey = activeChain();
+  async function refresh() {
+    const chain = chainKey();
     const addr = walletAddress();
     if (!addr) return;
 
-    // Build skeleton only if chain or address changed
-    buildSkeletonIfNeeded(chainKey, addr);
+    const key = chain + ':' + addr.toLowerCase();
+    const cfg = CHAINS[chain];
+    if (!cfg) return;
 
-    // Paint cached values immediately (no blink)
-    const cached = getCached(chainKey, addr);
+    // Build skeleton if the chain or address changed
+    if (renderedKey !== key) {
+      buildSkeleton(chain, cfg.tokens);
+      renderedKey = key;
+    }
+
+    // Paint cache immediately — no visibility hidden
+    const cached = getCache(key);
     if (cached) {
-      for (const [sym, val] of Object.entries(cached)) setText(sym, val);
+      for (const [sym, val] of Object.entries(cached)) show(sym, val);
     }
 
-    // Concurrency guard: only one fetch in flight
-    if (refreshing) return;
-    refreshing = true;
+    // Skip if another fetch is already running (concurrency guard)
+    if (fetching) return;
+    fetching = true;
+
     try {
-      const fresh = await fetchChainBalances(chainKey, addr);
-      const merged = Object.assign({}, cached || {}, fresh);
-      for (const [sym, val] of Object.entries(fresh)) setText(sym, val);
-      if (Object.keys(fresh).length) writeCache(chainKey, addr, merged);
+      const fresh = await fetchAll(chain, addr);
+      for (const [sym, val] of Object.entries(fresh)) show(sym, val);
+      if (Object.keys(fresh).length) {
+        writeCache(key, Object.assign(cached || {}, fresh));
+      }
     } catch (_) {
-      // leave whatever's on screen — do not blank out
+      // Don't blank out — leave whatever was on screen
     } finally {
-      refreshing = false;
+      fetching = false;
     }
   }
 
-  // ---- wire the Refresh button ----
-  function hookButton() {
-    const btn = [...document.querySelectorAll('button')].find(b =>
-      /Refresh Balances/i.test(b.textContent || '')
-    );
-    if (!btn || btn.dataset.stable === '1') return;
-    btn.dataset.stable = '1';
-    btn.removeAttribute('onclick');
-    btn.onclick = null;
-    btn.addEventListener('click', () => refreshBalances());
+  // Hook Refresh button
+  function hook() {
+    const btn = [...document.querySelectorAll('button')].find(b => /Refresh Balances/i.test(b.textContent || ''));
+    if (btn && btn.dataset.one !== '1') {
+      btn.dataset.one = '1';
+      btn.removeAttribute('onclick');
+      btn.onclick = null;
+      btn.addEventListener('click', refresh);
+    }
   }
 
-  // ---- react to chain change ----
+  // Chain change → new skeleton
   document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'stealthChain') {
-      // Chain changed → rebuild skeleton for the new chain
-      renderedChain = null;
-      renderedAddr  = null;
-      setTimeout(refreshBalances, 150);
+      renderedKey = null;
+      setTimeout(refresh, 200);
     }
   });
 
-  // ---- boot ----
-  function boot() {
-    hookButton();
-    if (walletAddress()) refreshBalances();
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else { boot(); }
+  // Boot
+  function boot() { hook(); if (walletAddress()) refresh(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
   setTimeout(boot, 1200);
   setTimeout(boot, 3000);
 
-  // ---- periodic refresh, but silent ----
-  // Silent = no DOM rebuild, only text updates. Users see nothing.
-  setInterval(() => { if (walletAddress()) refreshBalances(); }, 120000);
+  // Silent background refresh every 90s
+  setInterval(() => { if (walletAddress()) refresh(); }, 90000);
 
-  window.refreshBalances = refreshBalances;
-  window.__letheRefreshBalances = refreshBalances;
+  // Expose for legacy callers
+  window.__letheRefreshBalances = refresh;
+  window.refreshBalances = refresh;
+})();
+</script>
+
+
+<script>
+/* LETHE_TOPBAR_V1 */
+(function() {
+  'use strict';
+
+  const KEY = 'lethe_active_chain';
+  const CHAINS = [
+    { key: 'ethereum', label: 'Ethereum', color: '#627eea' },
+    { key: 'arbitrum', label: 'Arbitrum', color: '#28a0f0' },
+    { key: 'sepolia',  label: 'Sepolia',  color: '#a78bfa' },
+  ];
+
+  function getStored() {
+    const s = localStorage.getItem(KEY);
+    if (s && CHAINS.find(c => c.key === s)) return s;
+    const sel = document.getElementById('stealthChain');
+    return (sel && sel.value) || 'ethereum';
+  }
+
+  function setChain(key) {
+    if (!CHAINS.find(c => c.key === key)) return;
+    localStorage.setItem(KEY, key);
+
+    // Sync the hidden stealthChain select so existing code picks it up
+    const sel = document.getElementById('stealthChain');
+    if (sel && sel.value !== key) {
+      sel.value = key;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Update label
+    const el = document.getElementById('tbChainLabel');
+    const c = CHAINS.find(x => x.key === key);
+    if (el && c) el.textContent = c.label;
+
+    // Update dot color
+    const dot = document.getElementById('tbChainDot');
+    if (dot && c) dot.style.background = c.color;
+
+    // Highlight active item in menu
+    document.querySelectorAll('[data-tb-chain]').forEach(item => {
+      item.style.background = item.dataset.tbChain === key
+        ? 'rgba(139,92,246,0.18)' : 'transparent';
+    });
+  }
+
+  function findPocket() {
+    // Find the button/element that says "Pocket" or "No connection" or "Connecting"
+    const candidates = [...document.querySelectorAll('button, div, span')];
+    for (const el of candidates) {
+      const t = (el.textContent || '').trim();
+      if (t.length < 30 && /^(pocket|no connection|connecting)/i.test(t) && el.children.length <= 4) {
+        return el;
+      }
+    }
+    return null;
+  }
+
+  function build() {
+    if (document.getElementById('tbChainBtn')) return;
+
+    const anchor = findPocket();
+    if (!anchor) return;
+
+    const parent = anchor.parentNode;
+    if (!parent) return;
+
+    // Ensure the parent has positioning context for dropdown
+    if (getComputedStyle(parent).position === 'static') {
+      parent.style.position = 'relative';
+    }
+
+    const chain = getStored();
+    const cfg = CHAINS.find(c => c.key === chain);
+
+    const wrap = document.createElement('div');
+    wrap.id = 'tbChainBtn';
+    wrap.style.cssText = 'position:relative;display:inline-block;margin-right:8px';
+
+    wrap.innerHTML = `
+      <button id="tbChainButton" style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;cursor:pointer;color:var(--text);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;font-family:inherit;line-height:1">
+        <span id="tbChainDot" style="width:8px;height:8px;border-radius:50%;background:${cfg ? cfg.color : '#627eea'};display:inline-block"></span>
+        <span id="tbChainLabel">${cfg ? cfg.label : 'Ethereum'}</span>
+        <span style="font-size:9px;opacity:0.55">▼</span>
+      </button>
+      <div id="tbChainMenu" style="display:none;position:absolute;top:100%;left:0;margin-top:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:6px;min-width:170px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.5)">
+        ${CHAINS.map(c => `
+          <button data-tb-chain="${c.key}" style="width:100%;text-align:left;background:transparent;border:none;color:var(--text);padding:10px 12px;cursor:pointer;border-radius:8px;font-family:inherit;font-size:13px;display:flex;align-items:center;gap:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${c.color};display:inline-block"></span>
+            ${c.label}
+          </button>
+        `).join('')}
+      </div>
+    `;
+
+    // Insert BEFORE the Pocket indicator
+    parent.insertBefore(wrap, anchor);
+
+    const button = document.getElementById('tbChainButton');
+    const menu = document.getElementById('tbChainMenu');
+
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = menu.style.display === 'block';
+      menu.style.display = open ? 'none' : 'block';
+      if (!open) {
+        // Highlight current
+        document.querySelectorAll('[data-tb-chain]').forEach(item => {
+          item.style.background = item.dataset.tbChain === getStored()
+            ? 'rgba(139,92,246,0.18)' : 'transparent';
+        });
+      }
+    });
+
+    menu.querySelectorAll('[data-tb-chain]').forEach(item => {
+      item.addEventListener('click', () => {
+        setChain(item.dataset.tbChain);
+        menu.style.display = 'none';
+      });
+    });
+
+    document.addEventListener('click', () => { menu.style.display = 'none'; });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+
+    setChain(chain); // apply initial state to dot/label/menu
+
+    console.log('[TOPBAR] Chain selector installed');
+  }
+
+  // Hide the old inline dropdown so users only see the top one
+  function hideInline() {
+    const sel = document.getElementById('stealthChain');
+    if (sel) {
+      sel.style.display = 'none';
+      // Hide the label
+      const label = [...document.querySelectorAll('div, label, span')].find(el =>
+        /^Chain for stealth addresses:?$/i.test((el.textContent || '').trim())
+      );
+      if (label) label.style.display = 'none';
+    }
+  }
+
+  // Ensure stealthChain has the stored value on load
+  function syncOnLoad() {
+    const stored = getStored();
+    const sel = document.getElementById('stealthChain');
+    if (sel && sel.value !== stored) {
+      sel.value = stored;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  function boot() {
+    build();
+    hideInline();
+    syncOnLoad();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+  setTimeout(boot, 800);
+  setTimeout(boot, 2000);
+  setTimeout(boot, 4000);
+
+  // Expose for other scripts (withdraw uses this)
+  window.getActiveChain = getStored;
+  window.setActiveChain = setChain;
 })();
 </script>
 
