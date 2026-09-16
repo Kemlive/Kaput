@@ -13,3 +13,4 @@ tor-js/
 kaput-stealth.bundle.js
 IPFS_CID.txt
 frontend/*.bak-*
+frontend/*.before-*
