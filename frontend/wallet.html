@@ -371,7 +371,7 @@
         <div id="walletSection" class="hidden">
             <div class="sweep-status" id="sweepStatus">
                 <div class="sweep-pulse"></div>
-                <span id="sweepStatusText">Auto-sweep active, monitoring every 8 seconds</span>
+                <span id="sweepStatusText">Auto-sweep active, monitoring every 30 seconds</span>
             </div>
 
             <div class="stats-grid">
@@ -706,86 +706,261 @@
                 this.wallet = wallet;
                 this.monitoring = false;
                 this.interval = null;
-                this.pollFrequency = 8000;
-                this.minSweepEth = 0.001;
-                this.minSweepToken = 1;
+                this.pollFrequency = 30000;      // 30s — was 8s, gentler on Tor
+                this.minSweepEth = 0.00005;      // was 0.001 — allow small sweeps
+                this.minSweepToken = 0.001;      // was 1 — allow fractional tokens
                 this.detectedDeposits = new Map();
                 this.onDepositDetected = null;
                 this.onSweepComplete = null;
                 this.onSweepFailed = null;
             }
+
+            // ---- Chain registry — the single source of truth ----
+            activeChainKey() {
+                return (window.getActiveChain && window.getActiveChain())
+                    || localStorage.getItem('lethe_active_chain')
+                    || (document.getElementById('stealthChain') || {}).value
+                    || 'ethereum';
+            }
+
+            tokensForChain(chainKey) {
+                const REG = {
+                    ethereum: {
+                        ETH:  { address: null,                                         decimals: 18, native: true },
+                        USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6,  abi: 'erc20' },
+                        USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6,  abi: 'usdt'  },
+                        DAI:  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, abi: 'erc20' }
+                    },
+                    arbitrum: {
+                        ETH:  { address: null,                                         decimals: 18, native: true },
+                        USDC: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6,  abi: 'erc20' },
+                        USDT: { address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6,  abi: 'usdt'  },
+                        DAI:  { address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18, abi: 'erc20' }
+                    },
+                    sepolia: {
+                        ETH:  { address: null,                                         decimals: 18, native: true },
+                        USDC: { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6,  abi: 'erc20' }
+                    }
+                };
+                return REG[chainKey] || REG.ethereum;
+            }
+
+            providerFor(chainKey) {
+                return new ethers.providers.JsonRpcProvider(
+                    window.location.origin + '/rpc?chain=' + chainKey
+                );
+            }
+
             start() {
                 if (this.monitoring) return;
                 this.monitoring = true;
                 this.checkAllDeposits();
                 this.interval = setInterval(() => this.checkAllDeposits(), this.pollFrequency);
             }
+
             stop() {
                 this.monitoring = false;
                 if (this.interval) { clearInterval(this.interval); this.interval = null; }
             }
+
             async checkAllDeposits() {
-                if (!this.wallet.wallet || !this.wallet.provider) return;
-                if (this.wallet.depositAddresses.length === 0) return;
+                if (!this.wallet.wallet) return;
+                if (!this.wallet.depositAddresses || this.wallet.depositAddresses.length === 0) return;
+
+                const chainKey = this.activeChainKey();
+                const tokens = this.tokensForChain(chainKey);
+                const provider = this.providerFor(chainKey);
+
                 for (const dep of this.wallet.depositAddresses) {
-                    if (dep.used) continue;
+                    if (dep.usedOn && dep.usedOn[this.activeChainKey()]) continue;
                     try {
-                        const ethBal = await this.wallet.provider.getBalance(dep.address);
+                        // Native ETH
+                        const ethBal = await provider.getBalance(dep.address);
                         const ethAmt = parseFloat(ethers.utils.formatEther(ethBal));
-                        if (ethAmt >= this.minSweepEth) await this.handleDeposit(dep, 'ETH', ethAmt);
-                        const daiAmt = parseFloat(await this.wallet.getTokenBalance(TOKENS.DAI.address, TOKENS.DAI.decimals, dep.address));
-                        if (daiAmt >= this.minSweepToken) await this.handleDeposit(dep, 'DAI', daiAmt);
-                        const usdcAmt = parseFloat(await this.wallet.getTokenBalance(TOKENS.USDC.address, TOKENS.USDC.decimals, dep.address));
-                        if (usdcAmt >= this.minSweepToken) await this.handleDeposit(dep, 'USDC', usdcAmt);
-                    } catch (e) {}
+                        if (ethAmt >= this.minSweepEth) {
+                            await this.handleDeposit(dep, 'ETH', ethAmt, chainKey, tokens, provider);
+                        }
+                        // All ERC-20s in registry
+                        for (const sym of Object.keys(tokens)) {
+                            if (sym === 'ETH') continue;
+                            const cfg = tokens[sym];
+                            if (!cfg.address) continue;
+                            try {
+                                const iface = new ethers.utils.Interface(['function balanceOf(address) view returns (uint256)']);
+                                const data = iface.encodeFunctionData('balanceOf', [dep.address]);
+                                const raw = await provider.call({ to: cfg.address, data });
+                                const bal = iface.decodeFunctionResult('balanceOf', raw)[0];
+                                const amt = parseFloat(ethers.utils.formatUnits(bal, cfg.decimals));
+                                if (amt >= this.minSweepToken) {
+                                    await this.handleDeposit(dep, sym, amt, chainKey, tokens, provider);
+                                }
+                            } catch (tokErr) {
+                                // silently skip this token, don't break the loop
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[SWEEP] check failed', dep.address, e.message);
+                    }
                 }
             }
-            async handleDeposit(deposit, symbol, amount) {
-                const key = deposit.address + ':' + symbol;
+
+            async handleDeposit(deposit, symbol, amount, chainKey, tokens, provider) {
+                const key = chainKey + ':' + deposit.address + ':' + symbol;
                 if (this.detectedDeposits.has(key)) return;
                 this.detectedDeposits.set(key, { token: symbol, amount });
+
                 if (this.onDepositDetected) this.onDepositDetected(deposit.address, symbol, amount);
-                await this.sweepDeposit(deposit, symbol, amount);
-            }
-            async sweepDeposit(deposit, symbol, amount) {
+
                 try {
-                    const depWallet = new ethers.Wallet(deposit.privateKey, this.wallet.provider);
-                    const dest = this.wallet.wallet.address;
-                    let tx;
-                    if (symbol === 'ETH') {
-                        const bal = await this.wallet.provider.getBalance(deposit.address);
-                        const gp = await this.wallet.provider.getGasPrice();
-                        const gl = ethers.BigNumber.from(21000);
-                        const gasCost = gp.mul(gl);
-                        if (bal.lte(gasCost)) {
-                            if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, 'Balance too low for gas');
-                            return;
-                        }
-                        const sweepAmt = bal.sub(gasCost);
-                        if (sweepAmt.lte(0)) return;
-                        tx = await depWallet.sendTransaction({ to: dest, value: sweepAmt, gasLimit: gl, gasPrice: gp });
-                    } else {
-                        const tokenAddr = symbol === 'DAI' ? TOKENS.DAI.address : TOKENS.USDC.address;
-                        const c = new ethers.Contract(tokenAddr, ERC20_ABI, depWallet);
-                        const rawBal = await c.balanceOf(deposit.address);
-                        if (rawBal.eq(0)) return;
-                        const ethBal = await this.wallet.provider.getBalance(deposit.address);
-                        const gp = await this.wallet.provider.getGasPrice();
-                        const gasCost = gp.mul(65000);
-                        if (ethBal.lt(gasCost)) {
-                            if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, 'No ETH for gas');
-                            return;
-                        }
-                        tx = await c.transfer(dest, rawBal);
-                    }
-                    const rcpt = await tx.wait();
-                    deposit.used = true;
-                    await this.wallet.save();
-                    this.detectedDeposits.delete(deposit.address + ':' + symbol);
-                    if (this.onSweepComplete) this.onSweepComplete(deposit.address, symbol, amount, rcpt.transactionHash);
+                    await this.sweepDeposit(deposit, symbol, amount, chainKey, tokens, provider);
                 } catch (e) {
-                    if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, e.message);
+                    // Retry next cycle
+                    this.detectedDeposits.delete(key);
+                    // Dig into ethers error chains to find the real RPC message
+                    let reason = e.reason || e.message || String(e);
+                    try {
+                        if (e.error && e.error.body) {
+                            const body = typeof e.error.body === 'string' ? JSON.parse(e.error.body) : e.error.body;
+                            if (body.error && body.error.message) reason = body.error.message;
+                        }
+                        if (e.error && e.error.message && !reason.includes(e.error.message)) {
+                            reason = e.error.message + ' | ' + reason;
+                        }
+                        if (e.body) {
+                            const body = typeof e.body === 'string' ? JSON.parse(e.body) : e.body;
+                            if (body.error && body.error.message) reason = body.error.message;
+                        }
+                    } catch (_) { /* fall through with e.message */ }
+                    console.error('[SWEEP] failed', symbol, deposit.address, reason, e);
+                    if (this.onSweepFailed) this.onSweepFailed(deposit.address, symbol, reason);
                 }
+            }
+
+            async sweepDeposit(deposit, symbol, amount, chainKey, tokens, provider) {
+                if (!deposit.privateKey) {
+                    throw new Error('Deposit private key missing — cannot sweep');
+                }
+
+                const depWallet = new ethers.Wallet(deposit.privateKey, provider);
+                const dest = this.wallet.wallet.address;
+                const cfg = tokens[symbol];
+                if (!cfg) throw new Error('Unknown token ' + symbol);
+
+                const feeData = await provider.getFeeData();
+                const isEip1559 = !!feeData.maxFeePerGas;
+
+                let tx;
+                if (cfg.native) {
+                    const bal = await provider.getBalance(deposit.address);
+                    // Chain-aware gas: Arbitrum has L1 data fee; 21k is too tight
+                    const isArbitrum = chainKey === 'arbitrum';
+                    const gasLimitBase = isArbitrum ? 200000 : 21000;
+                    // Use estimateGas to get the true cost, fall back to base
+                    let gasLimit;
+                    try {
+                        gasLimit = await provider.estimateGas({
+                            from: deposit.address,
+                            to: dest,
+                            value: bal,  // estimate with full balance so refunds aren't an issue
+                        });
+                        // Add 25% headroom
+                        gasLimit = gasLimit.mul(125).div(100);
+                    } catch (_) {
+                        gasLimit = ethers.BigNumber.from(gasLimitBase);
+                    }
+                    const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+                    // Buffer the gas price for Arbitrum's L1 data component
+                    const bufferedGasPrice = isArbitrum ? gasPrice.mul(120).div(100) : gasPrice;
+                    const gasCost = bufferedGasPrice.mul(gasLimit);
+                    if (bal.lte(gasCost)) {
+                        const need = ethers.utils.formatEther(gasCost);
+                        const have = ethers.utils.formatEther(bal);
+                        throw new Error('ETH balance ' + have + ' too low for gas ' + need + ' on ' + chainKey);
+                    }
+                    const value = bal.sub(gasCost);
+                    // Ensure we're not sending a dust amount
+                    if (value.lte(0)) {
+                        throw new Error('Sweep value would be zero after gas');
+                    }
+                    const txReq = {
+                        to: dest,
+                        value,
+                        gasLimit,
+                        type: isEip1559 ? 2 : 0,
+                    };
+                    if (isEip1559) {
+                        txReq.maxFeePerGas = feeData.maxFeePerGas;
+                        txReq.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+                    } else {
+                        txReq.gasPrice = feeData.gasPrice;
+                    }
+                    tx = await depWallet.sendTransaction(txReq);
+                } else {
+                    // ERC-20 (USDC, USDT, DAI)
+                    const ABI = cfg.abi === 'usdt'
+                        ? ['function balanceOf(address) view returns (uint256)', 'function transfer(address,uint256)']
+                        : ['function balanceOf(address) view returns (uint256)', 'function transfer(address,uint256) returns (bool)'];
+                    const contract = new ethers.Contract(cfg.address, ABI, depWallet);
+
+                    const balWei = await contract.balanceOf(deposit.address);
+                    if (balWei.eq(0)) throw new Error('Token balance is zero');
+
+                    // Must have ETH for gas
+                    const ethBal = await provider.getBalance(deposit.address);
+                    const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+                    const gasLimit = ethers.BigNumber.from(120000);
+                    const gasCost = gasPrice.mul(gasLimit);
+                    if (ethBal.lt(gasCost)) {
+                        throw new Error('Deposit address has no ETH for gas — send ETH first');
+                    }
+
+                    tx = await contract.transfer(dest, balWei, {
+                        gasLimit,
+                        ...(isEip1559
+                            ? { maxFeePerGas: feeData.maxFeePerGas, maxPriorityFeePerGas: feeData.maxPriorityFeePerGas }
+                            : { gasPrice: feeData.gasPrice })
+                    });
+                }
+
+                // Wait for the transaction to be mined — with receipt retry
+                // (transient RPC failures on the receipt lookup shouldn't be treated as sweep failure)
+                let receipt = null;
+                for (let attempt = 0; attempt < 6; attempt++) {
+                    try {
+                        receipt = await provider.getTransactionReceipt(tx.hash);
+                        if (receipt) break;
+                    } catch (e) {
+                        // RPC refused the receipt request (archive gate etc.) — retry
+                        console.warn('[SWEEP] receipt lookup attempt ' + (attempt+1) + ' failed:', e.message);
+                    }
+                    await new Promise(r => setTimeout(r, 4000));
+                }
+
+                if (!receipt) {
+                    // We can't confirm, but the tx WAS broadcast. Don't mark failed —
+                    // mark as broadcast-pending and let the next cycle re-check.
+                    deposit.broadcastTx = tx.hash;
+                    if (this.wallet.save) await this.wallet.save();
+                    console.warn('[SWEEP] could not confirm receipt, tx hash:', tx.hash);
+                    // Still call onSweepComplete so the user sees the tx hash
+                    if (this.onSweepComplete) this.onSweepComplete(deposit.address, symbol, amount, tx.hash);
+                if (typeof window.lethOnSweepComplete === 'function') {
+                    try { window.lethOnSweepComplete(deposit.address, symbol, amount, tx.hash); } catch (_) {}
+                }
+                    this.detectedDeposits.delete(chainKey + ':' + deposit.address + ':' + symbol);
+                    return;
+                }
+
+                if (receipt.status !== 1) {
+                    throw new Error('Sweep transaction reverted on-chain');
+                }
+
+                // Only NOW mark as complete
+                deposit.usedOn = Object.assign({}, deposit.usedOn || {}, { [chainKey]: true });
+                if (this.wallet.save) await this.wallet.save();
+                this.detectedDeposits.delete(chainKey + ':' + deposit.address + ':' + symbol);
+
+                if (this.onSweepComplete) this.onSweepComplete(deposit.address, symbol, amount, tx.hash);
             }
         }
         const autoSweep = new AutoSweepEngine(wallet);
@@ -810,7 +985,7 @@
 
         function startAutoSweep() {
             autoSweep.start();
-            addActivity('info', '🔍 Auto-sweep active', 'Monitoring every 8s');
+            addActivity('info', '🔍 Auto-sweep active', 'Monitoring every 30s');
         }
 
         // ===== THEME =====
@@ -1233,52 +1408,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 
-<script>
-(function autoSelectChain() {
-  const CHAIN_ID_MAP = {
-    1: 'ethereum',
-    42161: 'arbitrum',
-    11155111: 'sepolia',
-  };
 
-  function applyChain(hexOrDec) {
-    const chainId = typeof hexOrDec === 'string' && hexOrDec.startsWith('0x')
-      ? parseInt(hexOrDec, 16)
-      : Number(hexOrDec);
-    const key = CHAIN_ID_MAP[chainId];
-    const sel = document.getElementById('stealthChain');
-    if (!sel || !key) return;
-    const hasOption = Array.from(sel.options).some(o => o.value === key);
-    if (!hasOption) return;
-    if (sel.value !== key) {
-      sel.value = key;
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-      console.log('[CHAIN] Auto-selected:', key, '(chainId ' + chainId + ')');
-    }
-  }
-
-  function detect() {
-    if (window.ethereum?.chainId) {
-      applyChain(window.ethereum.chainId);
-    }
-  }
-
-  // Wait for the DOM and for the wallet provider
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', detect);
-  } else {
-    detect();
-  }
-  setTimeout(detect, 800);
-  setTimeout(detect, 2500);
-
-  // React to user changing network in MetaMask
-  if (window.ethereum?.on) {
-    window.ethereum.on('chainChanged', applyChain);
-    console.log('[CHAIN] Listening for chainChanged');
-  }
-})();
-</script>
 
 
 <script>
@@ -2266,6 +2396,598 @@ document.addEventListener('DOMContentLoaded', () => {
   // Expose for other scripts (withdraw uses this)
   window.getActiveChain = getStored;
   window.setActiveChain = setChain;
+})();
+</script>
+
+
+<script>
+/* LETHE_WITHDRAW_GAS_CHECK */
+(function() {
+  'use strict';
+
+  // Local token config (mirrors the main script's TOKENS — keeps this script self-contained)
+  const TOKENS_LOCAL = {
+    ETH:  { address: null,                                              decimals: 18, native: true },
+    USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',     decimals: 6 },
+    USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',     decimals: 6 },
+    DAI:  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',     decimals: 18 }
+  };
+  const ERC20_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function transfer(address to, uint256 amount) returns (bool)',
+    'function decimals() view returns (uint8)'
+  ];
+  const USDT_ABI = [
+    'function balanceOf(address) view returns (uint256)',
+    'function transfer(address to, uint256 amount)',
+    'function decimals() view returns (uint8)'
+  ];
+
+  function activeChain() {
+    return (window.getActiveChain && window.getActiveChain())
+        || localStorage.getItem('lethe_active_chain')
+        || (document.getElementById('stealthChain') || {}).value
+        || 'ethereum';
+  }
+
+  function findBtn() {
+    return [...document.querySelectorAll('button')].find(b =>
+      /^Withdraw$/.test((b.textContent || '').trim()) && b.classList.contains('btn-primary')
+    );
+  }
+
+  function box() {
+    let el = document.getElementById('wdGasBox');
+    if (el) return el;
+    const btn = findBtn();
+    if (!btn || !btn.parentNode) return null;
+    el = document.createElement('div');
+    el.id = 'wdGasBox';
+    el.style.cssText = 'display:none;margin-top:14px;padding:16px;background:var(--bg-input);border:1px solid var(--border);border-radius:12px;font-size:13px;line-height:1.55;color:var(--text)';
+    btn.parentNode.insertBefore(el, btn.nextSibling);
+    return el;
+  }
+
+  function fmtEth(wei) {
+    return parseFloat(ethers.utils.formatEther(wei)).toFixed(8);
+  }
+
+  function shortAddr(a) {
+    if (!a) return '';
+    return a.slice(0, 10) + '…' + a.slice(-8);
+  }
+
+  // ---- Estimate gas, check balances, get fee ----
+  async function estimate() {
+    const aEl = document.getElementById('withdrawAddress');
+    const mEl = document.getElementById('withdrawAmount');
+    const tEl = document.getElementById('withdrawToken');
+    if (!aEl || !mEl || !tEl) return { error: 'Missing form fields' };
+
+    const to = aEl.value.trim();
+    const amount = mEl.value.trim();
+    const token = tEl.value;
+
+    if (!to || !amount) return { error: 'Fill in destination and amount' };
+    if (!ethers.utils.isAddress(to)) return { error: 'Invalid destination address' };
+
+    const cfg = TOKENS_LOCAL[token];
+    if (!cfg) return { error: 'Token ' + token + ' not configured' };
+
+    const chainKey = activeChain();
+    const provider = new ethers.providers.JsonRpcProvider(
+      window.location.origin + '/rpc?chain=' + chainKey
+    );
+    const signer = wallet.wallet.connect(provider);
+    const from = await signer.getAddress();
+    const ethBal = await provider.getBalance(from);
+
+    // Build the tx request
+    let txReq;
+    let tokenBal;
+    if (cfg.native) {
+      try { txReq = { to, value: ethers.utils.parseEther(amount) }; }
+      catch (_) { return { error: 'Invalid amount' }; }
+    } else {
+      const abi = token === 'USDT' ? USDT_ABI : ERC20_ABI;
+      const c = new ethers.Contract(cfg.address, abi, signer);
+      let rawAmount;
+      try { rawAmount = ethers.utils.parseUnits(amount, cfg.decimals); }
+      catch (_) { return { error: 'Invalid amount' }; }
+
+      try {
+        tokenBal = await c.balanceOf(from);
+      } catch (e) {
+        return { error: 'Cannot read ' + token + ' balance', detail: e.message };
+      }
+
+      if (tokenBal.lt(rawAmount)) {
+        return {
+          error: 'Not enough ' + token,
+          detail: 'You have ' + ethers.utils.formatUnits(tokenBal, cfg.decimals) +
+                  ' ' + token + ', trying to send ' + amount
+        };
+      }
+
+      txReq = await c.populateTransaction.transfer(to, rawAmount);
+    }
+
+    // Estimate gas
+    let gasLimit;
+    try {
+      gasLimit = await signer.estimateGas(txReq);
+    } catch (e) {
+      return { error: 'Cannot estimate gas for this transaction', detail: (e.reason || e.message || '').slice(0, 200) };
+    }
+
+    // Fee data (EIP-1559 preferred)
+    const feeData = await signer.getFeeData();
+    const maxFee = feeData.maxFeePerGas || feeData.gasPrice;
+    const priority = feeData.maxPriorityFeePerGas;
+    const is1559 = !!feeData.maxFeePerGas;
+
+    const gasCost = gasLimit.mul(maxFee);
+    const sufficient = ethBal.gte(gasCost);
+
+    return {
+      ok: true, token, amount, to, chainKey,
+      gasLimit, maxFee, priority, is1559,
+      gasCost, ethBal, sufficient, tokenBal
+    };
+  }
+
+  function render(est) {
+    const el = box();
+    if (!el) return;
+
+    if (est.error) {
+      el.style.display = 'block';
+      el.innerHTML =
+        '<div style="color:#ef4444;font-weight:600;margin-bottom:8px">Cannot proceed</div>' +
+        '<div style="color:var(--text-dim);font-size:12px">' + est.error + '</div>' +
+        (est.detail ? '<div style="color:var(--text-dim);font-size:12px;margin-top:4px">' + est.detail + '</div>' : '') +
+        '<button id="wdGasCancel" class="btn btn-secondary" style="width:100%;margin-top:14px">Close</button>';
+      document.getElementById('wdGasCancel').onclick = () => { el.style.display = 'none'; };
+      return;
+    }
+
+    const gasLimit = est.gasLimit.toString();
+    const maxGwei = parseFloat(ethers.utils.formatUnits(est.maxFee, 'gwei')).toFixed(2);
+    const priorityGwei = est.priority ? parseFloat(ethers.utils.formatUnits(est.priority, 'gwei')).toFixed(2) : null;
+    const feeEth = fmtEth(est.gasCost);
+    const haveEth = fmtEth(est.ethBal);
+    const row = (label, value, opts) => {
+      opts = opts || {};
+      return '<tr>' +
+        '<td style="color:var(--text-dim);padding:5px 0;font-size:12px' + (opts.border ? ';border-top:1px solid var(--border);padding-top:10px' : '') + '">' + label + '</td>' +
+        '<td style="text-align:right;font-size:12px;' + (opts.border ? 'border-top:1px solid var(--border);padding-top:10px;' : '') + (opts.mono ? 'font-family:monospace;font-size:11px' : '') + (opts.bold ? 'font-weight:600;' : '') + '">' + value + '</td>' +
+      '</tr>';
+    };
+
+    el.style.display = 'block';
+    el.innerHTML =
+      '<div style="font-weight:600;font-size:14px;margin-bottom:12px">Review withdrawal</div>' +
+      '<table style="width:100%;border-collapse:collapse">' +
+        row('Amount', est.amount + ' ' + est.token, { bold: true }) +
+        row('To', shortAddr(est.to), { mono: true }) +
+        row('Chain', est.chainKey) +
+        row('Gas limit', gasLimit) +
+        row('Max fee', maxGwei + ' gwei' + (priorityGwei ? ' + ' + priorityGwei + ' tip' : '')) +
+        row('Network fee (est.)', feeEth + ' ETH', { border: true, bold: true }) +
+        row('Your ETH balance', haveEth, { bold: !est.sufficient ? false : true }) +
+        (est.tokenBal && !TOKENS_LOCAL[est.token].native
+          ? row('Your ' + est.token + ' balance', ethers.utils.formatUnits(est.tokenBal, TOKENS_LOCAL[est.token].decimals))
+          : '') +
+      '</table>' +
+      '<div style="margin-top:10px;font-size:11px;color:var(--text-dim);line-height:1.4">' +
+        (est.is1559
+          ? 'EIP-1559: max fee is the ceiling. Actual cost is usually lower — the difference is refunded.'
+          : 'Legacy gas price. Fee paid equals max fee × gas used.') +
+      '</div>' +
+      (est.sufficient
+        ? '<button id="wdGasConfirm" class="btn btn-primary" style="width:100%;margin-top:14px">Confirm &amp; Send</button>'
+        : '<div style="margin-top:14px;padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;font-size:12px;color:#ef4444">' +
+            '<strong>Not enough ETH for gas.</strong><br>' +
+            'You need at least ' + feeEth + ' ETH on ' + est.chainKey + '.<br>' +
+            'You have ' + haveEth + ' ETH.' +
+          '</div>') +
+      '<button id="wdGasCancel" class="btn btn-secondary" style="width:100%;margin-top:8px">Cancel</button>';
+
+    document.getElementById('wdGasCancel').onclick = () => { el.style.display = 'none'; };
+    if (est.sufficient) {
+      const btn = document.getElementById('wdGasConfirm');
+      btn.onclick = () => execute(est, btn);
+    }
+  }
+
+  async function execute(est, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(
+        window.location.origin + '/rpc?chain=' + est.chainKey
+      );
+      const signer = wallet.wallet.connect(provider);
+      const cfg = TOKENS_LOCAL[est.token];
+
+      let tx;
+      if (cfg.native) {
+        tx = await signer.sendTransaction({ to: est.to, value: ethers.utils.parseEther(est.amount) });
+      } else {
+        const abi = est.token === 'USDT' ? USDT_ABI : ERC20_ABI;
+        const c = new ethers.Contract(cfg.address, abi, signer);
+        tx = await c.transfer(est.to, ethers.utils.parseUnits(est.amount, cfg.decimals));
+      }
+
+      if (typeof showToast === 'function') showToast('💸 Sent, waiting for confirmation…', 'success');
+      const receipt = await tx.wait();
+
+      // Try to read actual fee paid
+      let actualFee = null;
+      if (receipt && receipt.gasUsed && receipt.effectiveGasPrice) {
+        actualFee = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+      }
+
+      document.getElementById('withdrawAddress').value = '';
+      document.getElementById('withdrawAmount').value = '';
+      const el = document.getElementById('wdGasBox');
+      el.innerHTML =
+        '<div style="color:#10b981;font-weight:600;font-size:14px;margin-bottom:8px">✓ Withdrawal confirmed</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+          '<tr><td style="color:var(--text-dim);padding:4px 0">Amount</td><td style="text-align:right">' + est.amount + ' ' + est.token + '</td></tr>' +
+          '<tr><td style="color:var(--text-dim);padding:4px 0">To</td><td style="text-align:right;font-family:monospace;font-size:11px">' + shortAddr(est.to) + '</td></tr>' +
+          (actualFee ? '<tr><td style="color:var(--text-dim);padding:4px 0">Actual fee paid</td><td style="text-align:right">' + fmtEth(actualFee) + ' ETH</td></tr>' : '') +
+          '<tr><td style="color:var(--text-dim);padding:4px 0">Tx</td><td style="text-align:right;font-family:monospace;font-size:11px">' + tx.hash.slice(0, 12) + '…</td></tr>' +
+        '</table>' +
+        '<button id="wdGasDone" class="btn btn-secondary" style="width:100%;margin-top:12px">Close</button>';
+      document.getElementById('wdGasDone').onclick = () => { el.style.display = 'none'; };
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Confirm & Send';
+      const msg = (e.reason || e.message || '').slice(0, 200);
+      if (typeof showToast === 'function') showToast('⚠️ ' + msg, 'error');
+    }
+  }
+
+  function install() {
+    const btn = findBtn();
+    if (!btn || btn.dataset.gasCheck === '1') return;
+    btn.dataset.gasCheck = '1';
+    btn.removeAttribute('onclick');
+    btn.onclick = null;
+
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = box();
+      if (!el) return;
+      el.style.display = 'block';
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Estimating gas…</div>';
+      try {
+        const est = await estimate();
+        render(est);
+      } catch (err) {
+        el.innerHTML = '<div style="color:#ef4444">Estimator failed: ' + (err.message || err) + '</div>';
+      }
+    });
+  }
+
+  setInterval(install, 2000);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install);
+  } else {
+    install();
+  }
+})();
+</script>
+
+
+<script>
+/* LETHE_CHAIN_PRECEDENCE */
+(function() {
+  'use strict';
+  // The top bar is authoritative. Whatever the legacy auto-select does,
+  // we re-apply the stored top-bar choice 1 second later.
+  function enforce() {
+    const stored = localStorage.getItem('lethe_active_chain');
+    if (!stored) return;
+    const sel = document.getElementById('stealthChain');
+    if (!sel) return;
+    if (sel.value !== stored) {
+      sel.value = stored;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log('[PRECEDENCE] Re-asserted chain =', stored);
+    }
+  }
+  function boot() {
+    enforce();
+    // Keep re-asserting for the first few seconds after load
+    [300, 800, 1500, 2500, 4000, 6000, 8000, 12000].forEach(t => setTimeout(enforce, t));
+    // Also re-assert whenever the stealthChain select changes, in case a legacy listener overwrote it
+    const sel = document.getElementById('stealthChain');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        const stored = localStorage.getItem('lethe_active_chain');
+        if (stored && sel.value !== stored) {
+          setTimeout(() => {
+            sel.value = stored;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+          }, 100);
+        }
+      });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else { boot(); }
+})();
+</script>
+
+
+
+<script>
+/* LETHE_DEPOSIT_CARD_V3 */
+(function() {
+  'use strict';
+  const TIMEOUT = 15000;
+  const ARCHIVE_KEY = 'lethe_archived_deposits';
+
+  function chainKey() {
+    return (window.getActiveChain && window.getActiveChain())
+        || localStorage.getItem('lethe_active_chain')
+        || (document.getElementById('stealthChain') || {}).value
+        || 'ethereum';
+  }
+  function provider() {
+    return new ethers.providers.JsonRpcProvider(
+      window.location.origin + '/rpc?chain=' + chainKey()
+    );
+  }
+  function timeout(p, ms) {
+    return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('t')), ms))]);
+  }
+  function shortAddr(a) { return a.slice(0,10) + '…' + a.slice(-6); }
+
+  function copyText(text) {
+    const done = (ok) => typeof showToast === 'function' && showToast(ok ? '📋 ' + shortAddr(text) : 'Copy failed', ok ? 'success' : 'error');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(true); } catch (_) { done(false); }
+      document.body.removeChild(ta);
+    }
+  }
+  window.lethCopy = copyText;
+
+  // Archive persistence
+  function loadArchive() {
+    try { return JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '{}'); } catch (_) { return {}; }
+  }
+  function saveArchive(o) { try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(o)); } catch (_) {} }
+  function markArchived(address, chain) {
+    const ar = loadArchive();
+    const k = address.toLowerCase();
+    ar[k] = ar[k] || { address: address, chains: [], firstArchivedAt: Date.now() };
+    if (chain && ar[k].chains.indexOf(chain) === -1) ar[k].chains.push(chain);
+    ar[k].lastArchivedAt = Date.now();
+    saveArchive(ar);
+  }
+  function isArchived(address) { return !!loadArchive()[address.toLowerCase()]; }
+  window.lethMarkArchived = markArchived;
+
+  function activeList() {
+    if (typeof wallet === 'undefined' || !wallet || !wallet.depositAddresses) return [];
+    return wallet.depositAddresses.map((d, i) => ({ d, i })).filter(({ d }) => !isArchived(d.address));
+  }
+  function archivedList() {
+    if (typeof wallet === 'undefined' || !wallet || !wallet.depositAddresses) return [];
+    return wallet.depositAddresses.map((d, i) => ({ d, i })).filter(({ d }) => isArchived(d.address));
+  }
+
+  // ---------- Active section (inside deposit card) ----------
+  let showAllActive = false;
+  async function renderActive() {
+    const el = document.getElementById('letheDepositActive');
+    if (!el) return;
+    if (typeof wallet === 'undefined' || !wallet || !wallet.depositAddresses) {
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Unlock to view</div>';
+      return;
+    }
+    const list = activeList();
+    if (!list.length) {
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No active addresses. Click Generate.</div>';
+      return;
+    }
+    const current = list[list.length - 1];
+    const shown = showAllActive ? list : [current];
+    const p = provider();
+    const bals = await Promise.all(shown.map(async ({ d }) => {
+      try { return await timeout(p.getBalance(d.address), TIMEOUT); } catch (_) { return null; }
+    }));
+
+    let html = '<table style="width:100%;border-collapse:collapse">';
+    shown.forEach(({ d, i }, n) => {
+      const b = bals[n];
+      const eth = b ? parseFloat(ethers.utils.formatEther(b)) : null;
+      const balStr = eth === null ? '—' : (eth === 0 ? '0.000000' : eth.toFixed(6));
+      const isCur = i === current.i;
+      const bg = isCur ? 'background:rgba(139,92,246,0.10);border:1px solid rgba(139,92,246,0.35)' : 'background:rgba(255,255,255,0.02);border:1px solid transparent';
+      html += '<tr>';
+      html += '<td style="padding:12px 10px;border-radius:10px 0 0 10px;' + bg + ';font-family:ui-monospace,SF Mono,Menlo,monospace;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;width:60%">'
+           + '#' + i + ' · ' + d.address
+           + (isCur ? '<div style="font-family:inherit;color:var(--accent);font-size:10px;margin-top:2px;text-transform:uppercase;letter-spacing:0.06em">current</div>' : '')
+           + '</td>';
+      html += '<td style="padding:12px 8px;' + bg + ';text-align:right;font-family:ui-monospace,SF Mono,Menlo,monospace;font-size:12px;color:' + (eth && eth > 0 ? '#10b981' : 'var(--text-dim)') + ';white-space:nowrap">'
+           + balStr + '<span style="color:var(--text-dim);margin-left:4px;font-size:11px">ETH</span>'
+           + '</td>';
+      html += '<td style="padding:12px 10px 12px 6px;border-radius:0 10px 10px 0;' + bg + ';white-space:nowrap;width:1%">'
+           + '<button data-copy="' + d.address + '" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">Copy</button>'
+           + '</td>';
+      html += '</tr>';
+      // spacer row
+      html += '<tr><td colspan="3" style="height:6px"></td></tr>';
+    });
+    html += '</table>';
+
+    if (list.length > 1) {
+      const n = list.length - 1;
+      html += '<button id="toggleActiveTree" style="background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:6px 0;font-family:inherit;margin-top:2px">'
+           + (showAllActive ? '▾ Hide ' + n + ' other active' : '▸ Show ' + n + ' other active')
+           + '</button>';
+    }
+
+    el.innerHTML = html;
+    el.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.copy); }));
+    const t = document.getElementById('toggleActiveTree');
+    if (t) t.addEventListener('click', () => { showAllActive = !showAllActive; renderActive(); });
+  }
+
+  // ---------- Archive section (inside settings) ----------
+  let showArchiveDetail = false;
+  async function renderArchive() {
+    const el = document.getElementById('letheArchiveList');
+    if (!el) return;
+    const list = archivedList();
+    if (!list.length) {
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">None yet.</div>';
+      return;
+    }
+    const ar = loadArchive();
+    const p = provider();
+    const bals = await Promise.all(list.map(async ({ d }) => {
+      try { return await timeout(p.getBalance(d.address), TIMEOUT); } catch (_) { return null; }
+    }));
+    const withDust = bals.filter(b => b && !b.isZero()).length;
+
+    let html = '<div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">' +
+      list.length + ' burned' + (withDust ? ' · <span style="color:#f59e0b">' + withDust + ' with dust</span>' : '') +
+    '</div>';
+
+    html += '<button id="toggleArchiveList" style="background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:0;font-family:inherit">' +
+      (showArchiveDetail ? '▾ Hide list' : '▸ Show list') + '</button>';
+
+    if (showArchiveDetail) {
+      html += '<div style="margin-top:10px">';
+      html += list.map(({ d, i }, n) => {
+        const b = bals[n];
+        const eth = b ? parseFloat(ethers.utils.formatEther(b)) : null;
+        const meta = ar[d.address.toLowerCase()] || {};
+        const chains = (meta.chains || []).join(', ') || '—';
+        const balStr = eth === null ? '—' : (eth === 0 ? '0.000000' : eth.toFixed(6) + ' ETH');
+        const dustColor = eth && eth > 0 ? '#f59e0b' : 'var(--text-dim)';
+        return '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:4px;font-size:11px">' +
+          '<div style="font-family:monospace;color:var(--text-dim)">#' + i + ' ' + shortAddr(d.address) + '</div>' +
+          '<div style="color:var(--text-dim);margin-top:3px">used on: ' + chains + '</div>' +
+          '<div style="color:' + dustColor + ';margin-top:3px">remaining: ' + balStr + '</div>' +
+        '</div>';
+      }).join('');
+      html += '</div>';
+    }
+    el.innerHTML = html;
+    const t = document.getElementById('toggleArchiveList');
+    if (t) t.addEventListener('click', () => { showArchiveDetail = !showArchiveDetail; renderArchive(); });
+  }
+
+  // ---------- Fold the deposit card as <details> ----------
+  function foldCard() {
+    const card = [...document.querySelectorAll('.card')].find(c => {
+      const t = (c.querySelector('.card-title') || {}).textContent || '';
+      return /one.?time deposit/i.test(t) && !c.id.startsWith('depositCard');
+    });
+    if (!card) return false;
+
+    const summary = document.createElement('summary');
+    summary.className = 'card-title';
+    summary.style.cssText = 'cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;list-style:none';
+    summary.innerHTML = '<span>🎭 One-Time Deposit Address</span><span class="depChev" style="font-size:12px;color:var(--text-dim);transition:transform 0.2s">▼</span>';
+
+    const details = document.createElement('details');
+    details.className = card.className;
+    details.id = 'depositCardFold';
+    details.open = true;
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'padding-top:12px';
+    Array.from(card.childNodes).forEach(n => {
+      if (n.nodeType === 1 && n.classList.contains('card-title')) return;
+      inner.appendChild(n);
+    });
+
+    details.appendChild(summary);
+    details.appendChild(inner);
+    card.parentNode.replaceChild(details, card);
+
+    // Chevron rotation
+    const style = document.createElement('style');
+    style.textContent = 'details#depositCardFold[open] .depChev{transform:rotate(180deg)} details#depositCardFold > summary::-webkit-details-marker{display:none}';
+    document.head.appendChild(style);
+
+    // Insert active container
+    const activeEl = document.createElement('div');
+    activeEl.id = 'letheDepositActive';
+    activeEl.style.cssText = 'margin-top:12px;padding-top:12px;border-top:1px solid var(--border)';
+    inner.appendChild(activeEl);
+    return true;
+  }
+
+  // ---------- Settings archive section ----------
+  function installSettingsArchive() {
+    if (document.getElementById('letheArchiveList')) return;
+    // Anchor: the "Forget Wallet" button lives in the settings panel
+    const forgetBtn = [...document.querySelectorAll('button')].find(b => /Forget Wallet/i.test(b.textContent || ''));
+    if (!forgetBtn || !forgetBtn.parentNode) return;
+    const panel = forgetBtn.parentNode.parentNode || forgetBtn.parentNode;
+
+    const sec = document.createElement('div');
+    sec.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1px solid var(--border)';
+    sec.innerHTML =
+      '<div style="color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">🗄 Archived Deposits</div>' +
+      '<div id="letheArchiveList"><div style="color:var(--text-dim);font-size:12px">Loading…</div></div>';
+    panel.appendChild(sec);
+    renderArchive();
+  }
+
+  // ---------- Sweep success hook ----------
+  window.lethOnSweepComplete = function(address, symbol, amount, txHash) {
+    const ck = chainKey();
+    markArchived(address, ck);
+    // Log to the app's transaction history
+    if (typeof saveTransaction === 'function') {
+      try { saveTransaction(address, 'sweep', 'Auto-Swept', Number(amount).toFixed(6), symbol, txHash); } catch (_) {}
+    }
+    // Try to refresh the history panel
+    ['loadTransactions', 'renderTransactions', 'refreshHistory'].forEach(fn => {
+      if (typeof window[fn] === 'function') { try { window[fn](); } catch (_) {} }
+    });
+    if (typeof addActivity === 'function') {
+      try { addActivity('success', '✅ ' + Number(amount).toFixed(6) + ' ' + symbol + ' swept → archived', txHash.slice(0, 14) + '…'); } catch (_) {}
+    }
+    // Refresh views
+    setTimeout(() => { renderActive(); renderArchive(); }, 500);
+  };
+
+  // ---------- Boot ----------
+  function boot() {
+    foldCard();
+    installSettingsArchive();
+    renderActive();
+    renderArchive();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  setTimeout(boot, 1500);
+  setTimeout(boot, 3500);
+  setTimeout(boot, 6000);
+  setInterval(boot, 10000);
+
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'stealthChain') {
+      setTimeout(() => { renderActive(); renderArchive(); }, 300);
+    }
+  });
+
+  window.lethRenderDeposits = () => { renderActive(); renderArchive(); };
 })();
 </script>
 

@@ -390,6 +390,8 @@ export async function claimFunds(stealthAddress, destination, tokenSymbol = 'eth
 
 
 
+
+
 export function lockStealth() {
   userKeys = null;
   viewingKeyNode = null;

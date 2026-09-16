@@ -12,7 +12,7 @@ const ALLOWED_ORIGIN = 'https://lethewallet.com';
 
 const UPSTREAM_MAP = {
   ethereum: 'https://ethereum-rpc.publicnode.com',
-  arbitrum: 'https://arbitrum-one-rpc.publicnode.com',
+  arbitrum: 'https://arb1.arbitrum.io/rpc',   // official RPC, no token, full history
   sepolia:  'https://ethereum-sepolia-rpc.publicnode.com',
 };
 
