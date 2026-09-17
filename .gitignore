@@ -14,3 +14,11 @@ kaput-stealth.bundle.js
 IPFS_CID.txt
 frontend/*.bak-*
 frontend/*.before-*
+
+# Test files with public Hardhat mnemonic
+frontend/railgun-test.html
+
+# Working backups — never commit
+frontend/*.working
+*.bak
+*.bak-*
