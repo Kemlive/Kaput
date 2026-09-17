@@ -383,14 +383,39 @@
 
             <div class="card fade-in">
                 <div class="card-title">💰 Your Wallet</div>
-                <div class="address-box">
-                    <span id="walletAddress">Loading...</span>
-                    <button class="copy-btn" onclick="copyText('walletAddress')">Copy</button>
+                <div class="address-box" style="display:flex;align-items:center;gap:8px;">
+                    <span id="walletAddress" class="wallet-addr" data-full="" title="Click to copy" style="cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.02em;">Loading…</span>
+                    <button class="copy-btn" id="walletAddrEye" title="Reveal full address" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;">👁</button>
+                    <button class="copy-btn" id="walletAddrCopy" title="Copy address" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;">Copy</button>
                 </div>
             </div>
 
             <div class="card fade-in">
-                <div class="card-title">💎 Token Balances</div>
+                <div class="card-title">🔒 Private Balance</div>
+                <div style="text-align:center;padding:20px 0;">
+                    <div id="privateBalanceUsd" style="font-size:34px;font-weight:700;">$0.00</div>
+                    <div id="privateBalanceDetail" style="font-size:13px;color:var(--text-dim);margin-top:6px;">Nothing in the pool yet</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" id="btnPoolDeposit" onclick="poolDepositUI()" style="flex:1;">↓ Deposit</button>
+                    <button class="btn btn-secondary" id="btnPoolWithdraw" onclick="poolWithdrawUI()" style="flex:1;" disabled>↑ Withdraw</button>
+                </div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:10px;text-align:center;line-height:1.5;">
+                    Deposits and withdrawals are unlinkable on-chain. Withdrawals need ~$0.10 of ETH on Arbitrum for gas.
+                </div>
+                <div id="poolProgress" style="display:none;margin-top:16px;">
+                    <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;" id="poolProgressLabel">Working…</div>
+                    <div style="background:rgba(255,255,255,0.08);height:6px;border-radius:3px;overflow:hidden;">
+                        <div id="poolProgressBar" style="background:linear-gradient(90deg,#8b5cf6,#ec4899);height:100%;width:0%;transition:width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card fade-in">
+                <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span>💎 Token Balances</span>
+                    <button id="tokenFilterBtn" title="Toggle assets filter" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;">Hide 0</button>
+                </div>
                 <div class="token-list" id="tokenList">
                     <!-- dynamically rendered by refreshBalances() -->
                 </div>
@@ -427,6 +452,7 @@
                     Stealth addresses let you receive payments privately. Share ONE meta-address. Every sender generates a unique, unlinkable address for you. Client-side only, no node required.
                 </div>
                 <button class="btn btn-primary" id="btnInitStealth" onclick="initStealthWallet()">🔑 Initialize Stealth (Sign Once)</button>
+                <button class="btn btn-primary" id="btnInitPool" onclick="initPrivacyPool()" style="margin-top: 8px;">🔒 Initialize Privacy Pool</button>
                 <div id="stealthMetaDisplay" class="hidden">
                     
 
@@ -465,12 +491,12 @@
             <!-- Withdraw (Collapsible) -->
             <div class="card fade-in">
                 <div class="card-title clickable" id="withdrawTitle" onclick="toggleWithdraw()">
-                    <span>💸 Withdraw</span>
+                    <span>📤 Send from Wallet</span>
                     <span class="chevron">▼</span>
                 </div>
                 <div class="collapsible" id="withdrawCollapsible">
                     <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 14px;">
-                        Send funds from your main wallet anywhere.
+                        Send funds from your main wallet to any address. Instant, on-chain, no pool needed.
                     </p>
                     <input type="text" class="input" id="withdrawAddress" placeholder="Destination address" style="margin-bottom: 10px;">
                     <input type="number" class="input" id="withdrawAmount" placeholder="Amount" step="0.01" style="margin-bottom: 10px;">
@@ -617,36 +643,41 @@
                 this.password = null;
             }
             async connect() {
-                const rpcs = [
-    { url: 'https://eth.api.pocket.network', name: 'Pocket' },
-                    { url: 'http://127.0.0.1:8545', name: 'Private Node' },
-                    { url: 'https://rpc.ankr.com/eth', name: 'Ankr' },
-                    { url: 'https://cloudflare-eth.com', name: 'Cloudflare' },
-                    { url: 'https://1rpc.io/eth', name: '1RPC' },
-                    { url: 'https://ethereum.publicnode.com', name: 'PublicNode' },
-                    { url: 'https://ethereum-sepolia-rpc.publicnode.com', name: 'Sepolia' },
-                    { url: 'https://rpc.sepolia.org', name: 'Sepolia Alt' }
-                ];
-                for (const rpc of rpcs) {
-                    try {
-                        const provider = new ethers.JsonRpcProvider(rpc.url);
-                        const bn = await provider.getBlockNumber();
-                        this.provider = provider;
-                        updateNetworkStatus(rpc.name, true);
-                        document.getElementById('statBlock').textContent = bn.toLocaleString();
-                        document.getElementById('settingsBlock').textContent = bn.toLocaleString();
-                        document.getElementById('settingsNetwork').textContent = rpc.name;
-                        addActivity('success', '🔗 Connected to ' + rpc.name, bn.toLocaleString() + ' blocks');
-                        this.fetchEthPrice().catch(() => {});
-                        return provider;
-                    } catch (e) {}
+                // Status check goes through Lethe's own /rpc — same-origin, same path
+                // the wallet's real provider uses. No third-party RPCs.
+                let chainKey = 'ethereum';
+                try {
+                    const sel = document.getElementById('chainSelect')
+                             || document.getElementById('chainSelector')
+                             || document.getElementById('topbarChain')
+                             || document.querySelector('select#activeChain, select[data-chain]');
+                    if (sel && sel.value) chainKey = sel.value;
+                } catch (_) {}
+
+                try {
+                    const provider = new ethers.JsonRpcProvider(
+                        window.location.origin + '/rpc?chain=' + chainKey,
+                        undefined,
+                        { staticNetwork: true },
+                    );
+                    const bn = await provider.getBlockNumber();
+                    this.provider = provider;
+                    updateNetworkStatus('Lethe (Tor)', true);
+                    document.getElementById('statBlock').textContent = bn.toLocaleString();
+                    document.getElementById('settingsBlock').textContent = bn.toLocaleString();
+                    document.getElementById('settingsNetwork').textContent = 'Lethe (Tor)';
+                    addActivity('success', '🔗 Connected', bn.toLocaleString() + ' blocks');
+                    this.fetchEthPrice().catch(() => {});
+                    return provider;
+                } catch (e) {
+                    console.error('[connect]', chainKey, e?.shortMessage || e?.message || e);
+                    updateNetworkStatus('No connection', false);
+                    throw new Error('RPC failed: ' + (e?.message || e));
                 }
-                updateNetworkStatus('No connection', false);
-                throw new Error('All RPCs failed');
             }
             async fetchEthPrice() {
                 try {
-                    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+                    const res = await fetch('/coingecko/v2/prices/ETH-USD/spot');
                     const data = await res.json();
                     this.ethPrice = data.ethereum.usd;
                 } catch (e) { this.ethPrice = 0; }
@@ -1090,7 +1121,7 @@
             document.getElementById('seedModal').classList.add('hidden');
             try {
                 const address = await wallet.createFromSeed(window._pendingSeed, window._pendingPassword);
-                document.getElementById('walletAddress').textContent = address;
+                setWalletAddress(address);
                 document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
                 showWallet();
                 addActivity('success', 'Wallet created', address.substring(0, 10) + '...');
@@ -1108,7 +1139,7 @@
             if (pwd.length < 8) { showToast('Password 8+ chars', 'warning'); return; }
             try {
                 const address = await wallet.createFromSeed(seed, pwd);
-                document.getElementById('walletAddress').textContent = address;
+                setWalletAddress(address);
                 document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
                 showWallet();
                 addActivity('success', 'Wallet restored', address.substring(0, 10) + '...');
@@ -1117,20 +1148,157 @@
                 startAutoSweep();
             } catch (e) { showToast('Invalid seed: ' + e.message, 'error'); }
         }
+        // inlineSetAddr: define here so unlockWallet (same scope) can always call it.
+        function setWalletAddress(addr) {
+            const el = document.getElementById('walletAddress');
+            if (!el) return;
+            el.dataset.full = addr || '';
+            el.dataset.revealed = '0';
+            if (addr && addr.length > 16) {
+                el.textContent = addr.slice(0, 10) + '…' + addr.slice(-6);
+            } else {
+                el.textContent = addr || '';
+            }
+            el.title = 'Click to copy';
+        }
+
+        // heroWatchdog: reads visible token rows and writes hero cards.
+        // Runs every 3s and immediately after any successful unlock.
+        // Avoids the cross-scope problem that left statBalance/statPortfolio stale.
+        // selfContainedWatchdog: computes USD values from balance text.
+        // Doesn't depend on the balusd_* elements (which were staying empty).
+        // ===== ETH price from Chainlink on Arbitrum =====
+        // No HTTP. No CORS. No API key. What the chain itself sees.
+        // Aggregator: 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612 (ETH/USD, 8 decimals)
+        // Cached 5 minutes; read once per watchdog cycle at most.
+        const CHAINLINK_ETH_USD = '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612';
+        const CHAINLINK_ABI = ['function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)'];
+        let _heroEthPrice = 0;
+        let _heroEthPriceAt = 0;
+
+        async function _getHeroEthPrice() {
+            if (_heroEthPrice > 0 && Date.now() - _heroEthPriceAt < 300000) return _heroEthPrice;
+            try {
+                const provider = new ethers.JsonRpcProvider(
+                    window.location.origin + '/rpc?chain=arbitrum',
+                    undefined,
+                    { staticNetwork: true },
+                );
+                const feed = new ethers.Contract(CHAINLINK_ETH_USD, CHAINLINK_ABI, provider);
+                const round = await feed.latestRoundData();
+                const answer = round[1];  // int256, 8 decimals
+                const price = Number(answer) / 1e8;
+                if (price > 0) {
+                    _heroEthPrice = price;
+                    _heroEthPriceAt = Date.now();
+                    console.log('[price] Chainlink ETH/USD =', price.toFixed(2));
+                }
+            } catch (e) {
+                console.warn('[price] Chainlink read failed:', e?.message);
+            }
+            return _heroEthPrice;
+        }
+
+        async function updateHeroCardsFromDOM() {
+            const ethPrice = await _getHeroEthPrice();
+            const rows = document.querySelectorAll('#tokenList .token-row');
+            let ethAmount = 0;
+            let totalUsd = 0;
+            rows.forEach(row => {
+                const sym = (row.dataset.sym || '').toUpperCase();
+                const balEl = row.querySelector('.token-balance');
+                if (!balEl) return;
+                const amount = parseFloat((balEl.textContent || '').replace(/,/g, '').trim());
+                if (!isFinite(amount)) return;
+                const isStable = (sym === 'USDC' || sym === 'USDT' || sym === 'DAI');
+                const usd = isStable ? amount : (sym === 'ETH' ? amount * ethPrice : 0);
+                if (sym === 'ETH') ethAmount = amount;
+                totalUsd += usd;
+                // Also fill the USD subtitle if it's blank (belt and braces)
+                const usdEl = row.querySelector('.token-balance-dim');
+                if (usdEl && !usdEl.textContent.trim()) {
+                    usdEl.textContent = '$' + usd.toFixed(2);
+                }
+            });
+            const statBal = document.getElementById('statBalance');
+            const statPort = document.getElementById('statPortfolio');
+            if (statBal) statBal.textContent = ethAmount === 0 ? '0.0000' : ethAmount.toFixed(6);
+            if (statPort) statPort.textContent = '$' + totalUsd.toFixed(2);
+        }
+        window.__updateHeroCardsFromDOM = updateHeroCardsFromDOM;
+
+        // Watchdog — always running, in every state
+        setInterval(() => { try { updateHeroCardsFromDOM(); } catch (e) {} }, 15000);
+        // First tick shortly after load
+        setTimeout(updateHeroCardsFromDOM, 800);
+
         async function unlockWallet() {
             const pwd = document.getElementById('unlockPassword').value;
             if (!pwd) { showToast('Enter password', 'warning'); return; }
             try {
                 const address = await wallet.load(pwd);
                 if (!address) { showToast('No wallet found', 'warning'); return; }
-                document.getElementById('walletAddress').textContent = address;
+                setWalletAddress(address);
                 document.getElementById('statAddresses').textContent = wallet.depositAddresses.length;
                 showWallet();
                 addActivity('success', 'Wallet unlocked', address.substring(0, 10) + '...');
                 showToast('🔓 Unlocked', 'success');
-                refreshBalances();
-                startAutoSweep();
-            } catch (e) { showToast('Wrong password', 'error'); }
+                // addrCounterFix: count existing deposit + stealth addresses
+                try {
+                    const fromDeposit = (wallet.depositAddresses || []).length;
+                    let fromStealth = 0;
+                    try {
+                        const raw = localStorage.getItem('lethe_stealth_accounts') || '[]';
+                        const arr = JSON.parse(raw);
+                        fromStealth = Array.isArray(arr) ? arr.length : 0;
+                    } catch (e) {}
+                    const total = Math.max(fromDeposit, fromStealth);
+                    const el = document.getElementById('statAddresses');
+                    if (el) el.textContent = String(total);
+                    console.log('[unlock] addresses:', { fromDeposit, fromStealth, total });
+                } catch (e) { console.warn('[unlock] addr count failed:', e?.message); }
+                setTimeout(() => { try { window.__updateHeroCardsFromDOM(); } catch (e) {} }, 500);
+
+                // Wire the address row interactions (copy + reveal) once
+                (function wireAddrOnce() {
+                    const el = document.getElementById('walletAddress');
+                    if (!el || el._wired) return;
+                    el._wired = true;
+                    el.addEventListener('click', () => {
+                        const full = el.dataset.full;
+                        if (!full) return;
+                        navigator.clipboard.writeText(full).then(() => showToast('Address copied', 'success')).catch(() => {});
+                    });
+                    const eye = document.getElementById('walletAddrEye');
+                    if (eye) eye.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        const full = el.dataset.full;
+                        if (!full) return;
+                        const revealed = el.dataset.revealed === '1';
+                        el.dataset.revealed = revealed ? '0' : '1';
+                        el.textContent = revealed ? (full.slice(0,10) + '…' + full.slice(-6)) : full;
+                        eye.textContent = revealed ? '👁' : '🙈';
+                    });
+                    const cp = document.getElementById('walletAddrCopy');
+                    if (cp) cp.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        const full = el.dataset.full;
+                        if (!full) return;
+                        navigator.clipboard.writeText(full).then(() => showToast('Address copied', 'success')).catch(() => {});
+                    });
+                })();
+                try { refreshBalances(); } catch (e) { console.warn('[unlock] refreshBalances failed:', e?.message); }
+                try { startAutoSweep(); } catch (e) { console.warn('[unlock] startAutoSweep failed:', e?.message); }
+            } catch (e) {
+                // revealUnlockError: log the real error, don't blanket-label it "wrong password"
+                console.error('[unlock] real error:', e?.message || e);
+                console.error('[unlock] stack:', e?.stack);
+                showToast('Unlock failed: ' + (e?.message || 'unknown error'), 'error');
+            }
+        }
+        // Debug: warn if showWallet is not defined
+        if (typeof showWallet !== 'function') {
+            console.warn('[unlock] showWallet is NOT a function — will throw on unlock');
         }
         function forgetWallet() {
             if (confirm('Delete this wallet from this device? Make sure you have your seed phrase!')) {
@@ -1310,6 +1478,438 @@
                 document.getElementById('btnInitStealth').textContent = '🔑 Initialize Stealth';
                 showToast('Failed: ' + e.message, 'error');
             }
+        }
+
+        // ===== PRIVACY POOL (Railgun) =====
+        let poolWorker = null;
+        let poolWalletId = null;
+        let poolChainLoaded = false;
+        let poolInitResolve = null;
+        // sendApprovalFirst=true
+        let loadChainResolve = null;
+        let poolInitPromise = null;
+
+
+        let poolReady = false;
+        let poolRestored = false;
+
+        function savePoolState(id, addr) {
+            try {
+                localStorage.setItem('lethe.pool.state', JSON.stringify({ walletId: id, railgunAddress: addr, savedAt: Date.now() }));
+            } catch (e) {}
+        }
+        function loadPoolState() {
+            try {
+                const raw = localStorage.getItem('lethe.pool.state');
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) { return null; }
+        }
+        function clearPoolState() {
+            try { localStorage.removeItem('lethe.pool.state'); } catch (e) {}
+        }
+
+        // redriveFixed: set poolRestored synchronously to prevent interval double-fire,
+        // then explicitly chain load-chain after create-wallet so scan starts.
+        async function poolRedriveFromSeed() {
+            if (poolRestored) return;
+            if (!wallet || !wallet.wallet) return;
+            poolRestored = true;  // synchronous guard — stops the interval
+
+            if (!poolWorker) ensurePoolWorker();
+            await poolBootPromise;
+
+            console.log('[pool] re-deriving wallet on unlock');
+
+            try {
+                const { poolMnemonic, encryptionKey } = await window.Lethe.derivePoolCredentials(wallet.wallet);
+                poolWorker.postMessage({ type: 'create-wallet', id: 2, poolMnemonic, encryptionKey });
+
+                // Wait for create-result via the existing handler, then load chain + get balances
+                const timeout = new Promise((r) => setTimeout(() => r('timeout'), 20000));
+                const initP = new Promise((resolve) => { poolInitResolve = resolve; });
+                const res = await Promise.race([initP, timeout]);
+                if (res === 'timeout' || !res) {
+                    console.warn('[pool] create-wallet timed out');
+                    poolRestored = false;
+                    return;
+                }
+
+                console.log('[pool] wallet ready — loading Arbitrum');
+                const chainP = new Promise((resolve) => { loadChainResolve = resolve; });
+                poolWorker.postMessage({ type: 'load-chain', id: 3, networkName: 'Arbitrum', chainId: 42161 });
+                const chainTimeout = new Promise((r) => setTimeout(() => r('timeout'), 60000));
+                const chainRes = await Promise.race([chainP, chainTimeout]);
+                if (chainRes === 'timeout') console.warn('[pool] chain load timed out');
+                else console.log('[pool] chain ready — scan should start now');
+
+                // Ask for balances after a brief scan window
+                setTimeout(() => poolWorker.postMessage({ type: 'get-balances' }), 5000);
+                setTimeout(() => poolWorker.postMessage({ type: 'get-balances' }), 30000);
+            } catch (e) {
+                console.error('[pool] re-derive failed:', e);
+                poolRestored = false;
+            }
+        }
+
+        // Poll for unlock, then restore pool state
+        setInterval(() => {
+            if (wallet && wallet.wallet && !poolRestored) poolRedriveFromSeed().catch(() => {});
+        }, 2000);
+
+
+
+        let poolBootResolve = null;
+        let poolBootPromise = null;
+
+        function ensurePoolWorker() {
+            if (poolWorker) return poolWorker;
+            poolBootPromise = new Promise((res) => { poolBootResolve = res; });
+            poolWorker = new Worker('./lethe-pool-worker-wrapper.js?v=' + Date.now(), { type: 'module' });
+            poolWorker.onmessage = (e) => {
+                const { type, id, ...rest } = e.data || {};
+                if (type === 'poi-result') {
+                    console.log('[pool] POI result:', rest);
+                    if (rest.ok) showToast('Funds ready to withdraw', 'success');
+                    setTimeout(() => poolWorker.postMessage({ type: 'get-balances' }), 2000);
+                    return;
+                }
+                if (type === 'unshield-result') {
+                    hidePoolProgress();
+                    if (rest.ok && rest.transaction) {
+                        (async () => {
+                            try {
+                                showPoolProgress('Signing withdrawal…', 80);
+                                const arbSigner = getArbSigner();
+                                const tx = await arbSigner.sendTransaction({
+                                    to: rest.transaction.to,
+                                    data: rest.transaction.data,
+                                    value: BigInt(rest.transaction.value || '0'),
+                                    gasLimit: BigInt(rest.transaction.gasLimit),
+                                    maxFeePerGas: 200000000n,
+                                    maxPriorityFeePerGas: 5000000n,
+                                });
+                                console.log('[pool] unshield sent:', tx.hash);
+                                showToast('Withdrawal sent — funds landing at fresh address', 'success');
+                                showPoolProgress('Waiting for confirmation…', 95);
+                                await tx.wait();
+                                showToast('Withdrawal confirmed', 'success');
+                                hidePoolProgress();
+                                setTimeout(() => poolWorker.postMessage({ type: 'rescan' }), 10000);
+                                setTimeout(() => poolWorker.postMessage({ type: 'get-balances' }), 20000);
+                            } catch (e) {
+                                hidePoolProgress();
+                                console.error('[pool] unshield failed:', e);
+                                showToast('Withdrawal failed: ' + (e?.shortMessage || e?.message || e), 'error');
+                            }
+                        })();
+                    } else {
+                        hidePoolProgress();
+                        showToast('Withdrawal failed: ' + (rest.error || 'unknown'), 'error');
+                    }
+                    return;
+                }
+                if (type === 'shield-result') {
+                    hidePoolProgress();
+                    if (rest.ok && rest.transaction) {
+                        (async () => {
+                            try {
+                                // alwaysApproveThenShield: skip the allowance check entirely —
+                                // the previous version compared allowance against tx.value (ETH)
+                                // instead of the USDC amount, so it never approved. Just always
+                                // approve. Costs ~$0.02 on Arbitrum, idempotent, works first try.
+                                const t = rest.transaction;
+                                const provider = new ethers.JsonRpcProvider('https://lethewallet.com/rpc?chain=arbitrum');
+
+                                const USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+                                const iface = new ethers.Interface([
+                                    'function approve(address,uint256) returns (bool)',
+                                ]);
+
+                                console.log('[pool] approving spender', t.to);
+                                showPoolProgress('Approving (one-time)…', 30);
+                                const max = (2n ** 256n) - 1n;
+                                const approveData = iface.encodeFunctionData('approve', [t.to, max]);
+                                const arbSigner = getArbSigner();
+                                    const approveTx = await arbSigner.sendTransaction({ to: USDC, data: approveData });
+                                console.log('[pool] approve:', approveTx.hash);
+                                showPoolProgress('Waiting for approval…', 45);
+                                await approveTx.wait();
+                                console.log('[pool] approved');
+
+                                // 2. Estimate gas for the shield tx
+                                showPoolProgress('Estimating gas…', 55);
+                                const gas = await provider.estimateGas({
+                                    from: wallet.wallet.address,
+                                    to: t.to,
+                                    data: t.data,
+                                    value: BigInt(t.value || '0'),
+                                });
+                                const fee = await provider.getFeeData();
+                                const gasWithHeadroom = (gas * 130n) / 100n;
+
+                                // 3. Send shield tx
+                                // Fix: use safe fixed gas values on Arbitrum. The RPC's
+                                // getFeeData() returned maxPriorityFeePerGas > maxFeePerGas
+                                // which ethers rejects. Hardcoded ceiling is well above
+                                // Arbitrum's real base fee — user pays actual, not max.
+                                // Arbitrum real base fee: ~0.01 gwei. Ceiling 0.2 gwei
+                                // is 20x that — plenty of headroom, fits small balances.
+                                const SAFE_GAS_MAX = 200000000n;     // 0.2 gwei ceiling
+                                const SAFE_GAS_PRIORITY = 5000000n;  // 0.005 gwei tip
+                                showPoolProgress('Sending deposit…', 70);
+                                const tx = await getArbSigner().sendTransaction({
+                                    to: t.to,
+                                    data: t.data,
+                                    value: BigInt(t.value || '0'),
+                                    gasLimit: gasWithHeadroom,
+                                    maxFeePerGas: SAFE_GAS_MAX,
+                                    maxPriorityFeePerGas: SAFE_GAS_PRIORITY,
+                                });
+                                console.log('[pool] shield sent:', tx.hash);
+                                showToast('Deposit sent', 'success');
+                                showPoolProgress('Waiting for confirmation…', 90);
+                                await tx.wait();
+                                showToast('Deposit confirmed', 'success');
+                                hidePoolProgress();
+                                setTimeout(() => poolWorker.postMessage({ type: 'get-balances' }), 30000);
+                            } catch (e) {
+                                hidePoolProgress();
+                                console.error('[pool] shield failed:', e);
+                                showToast('Deposit failed: ' + (e?.shortMessage || e?.message || e), 'error');
+                            }
+                        })();
+                    } else {
+                        hidePoolProgress();
+                        showToast('Deposit failed: ' + (rest.error || 'unknown'), 'error');
+                    }
+                    return;
+                }
+                if (type === 'pool-progress') { showPoolProgress(rest.label, rest.pct); return; }
+                if (type === 'ready') {
+                    poolReady = true;
+                    if (poolBootResolve) poolBootResolve();
+                    return;
+                }
+                if (type === 'worker-error') { console.error('[pool worker-error]', rest); return; }
+                if (type === 'worker-rejection') { console.error('[pool worker-rejection]', rest); return; }
+                if (type === 'create-progress') { console.log('[pool] ' + rest.message); return; }
+                if (type === 'load-chain-result') {
+                    if (rest.ok) poolChainLoaded = true;
+                    if (loadChainResolve) { loadChainResolve(rest.ok); loadChainResolve = null; }
+                    return;
+                }
+                if (type === 'create-result') {
+                    if (rest.ok) {
+                        poolWalletId = rest.walletId;
+                        savePoolState(rest.walletId, rest.railgunAddress);
+                        if (poolInitResolve) { poolInitResolve(true); poolInitResolve = null; }
+                    } else {
+                        if (poolInitResolve) { poolInitResolve(false); poolInitResolve = null; }
+                    }
+                    if (rest.ok) {
+                        console.log('[pool] walletId = ' + rest.walletId);
+                        console.log('[pool] privateAddress = ' + rest.railgunAddress);
+                        showToast('Privacy Pool initialized', 'success');
+                    } else {
+                        console.error('[pool] ' + rest.error);
+                        showToast('Pool error: ' + rest.error, 'error');
+                    }
+                    return;
+                }
+                if (type === 'scan-progress') {
+                    const { tree, data } = rest;
+                    const pct = data?.progress != null ? (data.progress * 100).toFixed(0) + '%' : '?';
+                    console.log(`[pool scan ${tree}] ${pct}`);
+                    return;
+                }
+                if (type === 'balances') { console.log('[pool BALANCES]', rest); return; }
+                if (type === 'balance-update') {
+                    // sumPoolBuckets: sum USDC across all buckets so user sees funds
+                    // immediately after a shield, even before they're Spendable.
+                    const b = rest.data || {};
+                    const bucket = b.balanceBucket || 'unknown';
+                    const USDC = '0xaf88d065e77c8cc2239327c5edb3a432268e5831';
+                    const amounts = (b.erc20Amounts || []).filter(a => a.tokenAddress.toLowerCase() === USDC);
+                    const usdcRaw = amounts.reduce((sum, a) => sum + BigInt(a.amount || 0), 0n);
+                    const usdc = Number(usdcRaw) / 1e6;
+                    console.log('[pool balance]', bucket, usdc.toFixed(4), 'USDC');
+
+                    // Persist the latest per-bucket snapshot on the window
+                    if (!window.__poolBuckets) window.__poolBuckets = {};
+                    window.__poolBuckets[bucket] = usdc;
+
+                    // Total across all non-spent, non-zero buckets
+                    const buckets = window.__poolBuckets;
+                    const all = Object.entries(buckets)
+                        .filter(([k]) => k !== 'Spent')
+                        .reduce((s, [, v]) => s + v, 0);
+                    const spendable = buckets['Spendable'] || 0;
+
+                    const usdEl = document.getElementById('privateBalanceUsd');
+                    const detailEl = document.getElementById('privateBalanceDetail');
+                    if (usdEl) usdEl.textContent = '$' + all.toFixed(2);
+                    if (detailEl) {
+                        if (all === 0) detailEl.textContent = 'Nothing in the pool yet';
+                        else if (spendable >= all - 0.0001) detailEl.textContent = all.toFixed(4) + ' USDC ready';
+                        else detailEl.textContent = all.toFixed(4) + ' USDC (' + spendable.toFixed(4) + ' ready, rest maturing)';
+                    }
+                    const wbtn = document.getElementById('btnPoolWithdraw');
+                    if (wbtn) wbtn.disabled = spendable <= 0;
+                    return;
+                }
+            // orphanRemoved: dead initPrivacyPool body (its button no longer exists)
+            }  // orphanBracesFixed: close poolWorker.onmessage
+        }  // orphanBracesFixed: close ensurePoolWorker
+                // ===== PRIVATE POOL — deposit / withdraw =====
+        const POOL_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+
+        function showPoolProgress(label, pct) {
+            const p = document.getElementById('poolProgress');
+            if (!p) return;
+            p.style.display = 'block';
+            document.getElementById('poolProgressLabel').textContent = label;
+            document.getElementById('poolProgressBar').style.width = (pct || 0) + '%';
+        }
+        function hidePoolProgress() {
+            const p = document.getElementById('poolProgress');
+            if (p) p.style.display = 'none';
+        }
+
+        async function ensurePoolWallet() {
+            if (poolWalletId) return true;
+            if (poolInitPromise) return poolInitPromise;
+            poolInitPromise = (async () => {
+            if (!wallet.wallet) { showToast('Wallet not unlocked', 'error'); return false; }
+            if (typeof window.Lethe === 'undefined' || typeof window.Lethe.derivePoolCredentials !== 'function') {
+                showToast('Lethe bundle not ready', 'error'); return false;
+            }
+            if (!poolWorker) ensurePoolWorker();
+            await poolBootPromise;
+
+            const initPromise = new Promise((resolve) => { poolInitResolve = resolve; });
+
+            try {
+                const { poolMnemonic, encryptionKey } = await window.Lethe.derivePoolCredentials(wallet.wallet);
+                poolWorker.postMessage({ type: 'create-wallet', id: 2, poolMnemonic, encryptionKey });
+            } catch (e) {
+                showToast('Private wallet init failed: ' + (e?.message || e), 'error');
+                return false;
+            }
+
+            const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000));
+            const result = await Promise.race([initPromise, timeout]);
+            if (result === 'timeout' || !result) {
+                showToast('Private wallet init timed out — try again', 'error');
+                return false;
+            }
+
+            // Wallet created — now register it on Arbitrum for shield/unshield
+            if (!poolChainLoaded) {
+                const chainPromise = new Promise((resolve) => { loadChainResolve = resolve; });
+                poolWorker.postMessage({ type: 'load-chain', id: 3, networkName: 'Arbitrum', chainId: 42161 });
+
+                const chainTimeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 60000));
+                const chainResult = await Promise.race([chainPromise, chainTimeout]);
+                if (chainResult === 'timeout' || !chainResult) {
+                    showToast('Chain load timed out — try again', 'error');
+                    return false;
+                }
+            }
+            return true;
+            })();
+            try { return await poolInitPromise; }
+            finally { poolInitPromise = null; }
+        }
+
+        const ARB_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+        const ARB_RAILGUN_SHIELD = '0xfa7093cdd9ee6932b4eb2c9e1cde7ce00b1fa4b9';
+
+        // The main wallet.wallet is connected to the Ethereum provider.
+        // For any pool transaction, we need a signer bound to Arbitrum.
+        // Re-connecting the same private key to an Arbitrum provider does this.
+        let arbProvider = null;
+        function getArbSigner() {
+            if (!arbProvider) {
+                arbProvider = new ethers.JsonRpcProvider('https://lethewallet.com/rpc?chain=arbitrum');
+            }
+            return wallet.wallet.connect(arbProvider);
+        }
+
+        async function ensureUSDCApproval(spender, needed) {
+            const iface = new ethers.Interface([
+                'function allowance(address,address) view returns (uint256)',
+                'function approve(address,uint256) returns (bool)',
+            ]);
+            const provider = new ethers.JsonRpcProvider('https://lethewallet.com/rpc?chain=arbitrum');
+            const raw = await provider.call({
+                to: ARB_USDC,
+                data: iface.encodeFunctionData('allowance', [wallet.wallet.address, spender]),
+            });
+            const current = BigInt(raw);
+            console.log('[pool] current allowance:', current.toString());
+            if (current >= needed) {
+                console.log('[pool] allowance already sufficient');
+                return;
+            }
+            console.log('[pool] approving USDC…');
+            showPoolProgress('Approving USDC (one-time)…', 25);
+            const max = (2n ** 256n) - 1n;
+            const data = iface.encodeFunctionData('approve', [spender, max]);
+            const tx = await getArbSigner().sendTransaction({ to: ARB_USDC, data });
+            console.log('[pool] approve sent:', tx.hash);
+            showPoolProgress('Waiting for approval…', 45);
+            await tx.wait();
+            console.log('[pool] approval confirmed');
+        }
+
+        async function poolDepositUI() {
+            if (!wallet.wallet) { showToast('Wallet not unlocked', 'error'); return; }
+            if (!await ensurePoolWallet()) return;
+
+            const amtStr = await askAmount('Deposit USDC', 'How much USDC would you like to deposit into the private pool?', '10');
+            if (!amtStr) return;
+            const amountRaw = BigInt(Math.round(parseFloat(amtStr) * 1e6)).toString();
+
+            showPoolProgress('Preparing deposit…', 0);
+
+            poolWorker.postMessage({
+                type: 'shield',
+                id: 500,
+                networkName: 'Arbitrum',
+                walletAddress: wallet.wallet.address,
+                tokenAddress: POOL_USDC,
+                amountRaw,
+            });
+        }
+
+        async function poolWithdrawUI() {
+            if (!wallet.wallet) { showToast('Wallet not unlocked', 'error'); return; }
+            if (!await ensurePoolWallet()) return;
+
+            const amtStr = await askAmount('Withdraw USDC', 'How much USDC would you like to withdraw from the private pool?', '1');
+            if (!amtStr) return;
+            const amountRaw = BigInt(Math.round(parseFloat(amtStr) * 1e6)).toString();
+
+            // Fresh stealth address as destination — unlinkable to your wallet
+            let dest;
+            try {
+                const stealth = await window.Lethe.generateNextAddress('arbitrum');
+                dest = stealth.stealthAddress;
+                console.log('[pool] fresh destination:', dest);
+            } catch (e) {
+                showToast('Failed to generate destination: ' + e.message, 'error');
+                return;
+            }
+
+            showPoolProgress('Preparing withdrawal…', 0);
+            poolWorker.postMessage({
+                type: 'unshield',
+                id: 600,
+                networkName: 'Arbitrum',
+                tokenAddress: POOL_USDC,
+                amountRaw,
+                destinationAddress: dest,
+            });
         }
 
         async function generateStealthAddress(){
@@ -1831,6 +2431,54 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
+  // ===== Address display — truncate + reveal + click-to-copy =====
+  function _truncAddr(a) {
+    if (!a || a.length < 12) return a || '';
+    return a.slice(0, 10) + '…' + a.slice(-6);
+  }
+  function setWalletAddress(addr) {
+    const el = document.getElementById('walletAddress');
+    if (!el) return;
+    el.dataset.full = addr || '';
+    el.dataset.revealed = '0';
+    el.textContent = _truncAddr(addr);
+    el.title = 'Click to copy';
+  }
+  function _wireAddressUI() {
+    const el = document.getElementById('walletAddress');
+    const eye = document.getElementById('walletAddrEye');
+    const copy = document.getElementById('walletAddrCopy');
+    if (!el || el._wired) return;
+    el._wired = true;
+    el.addEventListener('click', () => {
+      const full = el.dataset.full;
+      if (!full) return;
+      navigator.clipboard.writeText(full).then(() => {
+        if (typeof showToast === 'function') showToast('Address copied', 'success');
+      }).catch(() => {});
+    });
+    if (eye) eye.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const full = el.dataset.full;
+      if (!full) return;
+      const revealed = el.dataset.revealed === '1';
+      el.dataset.revealed = revealed ? '0' : '1';
+      el.textContent = revealed ? _truncAddr(full) : full;
+      eye.textContent = revealed ? '👁' : '🙈';
+    });
+    if (copy) copy.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const full = el.dataset.full;
+      if (!full) return;
+      navigator.clipboard.writeText(full).then(() => {
+        if (typeof showToast === 'function') showToast('Address copied', 'success');
+      }).catch(() => {});
+    });
+  }
+  // Run once the element exists
+  if (document.readyState !== 'loading') setTimeout(_wireAddressUI, 100);
+  else document.addEventListener('DOMContentLoaded', _wireAddressUI);
+
   function renderSkeleton(chainId) {
     const list = document.getElementById('tokenList');
     if (!list) return;
@@ -1852,43 +2500,158 @@ document.addEventListener('DOMContentLoaded', () => {
     if (note) note.textContent = `Balances for ${cfg.label} (chain ${chainId}). Click a row to prefill the Withdraw card.`;
   }
 
-  async function updateBalances(chainId, addr) {
-    const cfg = CHAIN_TOKENS[chainId];
-    if (!cfg || !window.ethers) return;
+  // ===== Token list filter — hide zero balances by default =====
+  let _showEmptyTokens = false;
+  try { _showEmptyTokens = localStorage.getItem('lethe.showEmptyTokens') === '1'; } catch (e) {}
 
-    // Route everything through our own /rpc proxy — no external RPC
-    const chainKey = chainId === 11155111 ? 'sepolia'
-                   : chainId === 42161    ? 'arbitrum'
-                   : 'ethereum';
-    const proxyUrl = new URL('/rpc', window.location.origin).href + '?chain=' + chainKey;
+  function _applyTokenFilter() {
+    const rows = document.querySelectorAll('#tokenList .token-row');
+    rows.forEach(r => {
+      const sym = r.dataset.sym;
+      const balEl = document.getElementById('bal_' + sym);
+      const txt = (balEl && balEl.textContent) || '';
+      const isZero = /^-?0(\.0+)?$/.test(txt.trim()) || txt === '—';
+      r.style.display = (_showEmptyTokens || !isZero) ? '' : 'none';
+    });
+    const btn = document.getElementById('tokenFilterBtn');
+    if (btn) btn.textContent = _showEmptyTokens ? 'Show all' : 'Hide 0';
+  }
 
-    // ethers 5.x: use the URL with query string directly
-    const provider = new ethers.JsonRpcProvider(proxyUrl);
+  function _wireTokenFilter() {
+    const btn = document.getElementById('tokenFilterBtn');
+    if (!btn || btn._wired) return;
+    btn._wired = true;
+    btn.addEventListener('click', () => {
+      _showEmptyTokens = !_showEmptyTokens;
+      try { localStorage.setItem('lethe.showEmptyTokens', _showEmptyTokens ? '1' : '0'); } catch (e) {}
+      _applyTokenFilter();
+    });
+  }
+  if (document.readyState !== 'loading') setTimeout(_wireTokenFilter, 150);
+  else document.addEventListener('DOMContentLoaded', _wireTokenFilter);
 
-    for (const t of cfg.tokens) {
-      const balEl = document.getElementById('bal_' + t.sym);
-      if (!balEl) continue;
-      try {
-        if (t.native) {
-          const b = await provider.getBalance(addr);
-          balEl.textContent = ethers.formatEther(b).slice(0, 8);
-        } else {
-          const c = new ethers.Contract(t.address, ERC20_ABI_MIN, provider);
-          const b = await c.balanceOf(addr);
-          balEl.textContent = ethers.formatUnits(b, t.decimals);
-        }
-      } catch (e) {
-        balEl.textContent = '—';
-        console.warn('[LETHE] balance read failed for', t.sym, e.message);
+  // ===== Balance refresh — single source of truth =====
+  // Writes hero cards (ETH, Portfolio) AND token rows in one pass.
+  // Guarded so overlapping calls don't flicker. USD prices cached 60s.
+  let _balanceInFlight = false;
+  let _ethPriceCache = { usd: 0, at: 0 };
+
+  async function getEthPrice() {
+    // Delegates to Chainlink reader — single source of truth for ETH/USD.
+    if (typeof _getHeroEthPrice === 'function') return _getHeroEthPrice();
+    return 0;
+  }
+
+  // ===== Balance refresh — never blanks a good value =====
+  // Two properties:
+  //   1. All token reads run in parallel (Promise.all) — one slow read
+  //      can't stall the others.
+  //   2. On failure, we keep the previous successful value instead of
+  //      writing '—'. Prevents the "flicker" the user sees when a Tor
+  //      RPC round-trip misses.
+  const _lastBalances = {};  // sym -> { amount, isNative }
+
+  async function _readToken(provider, t, addr) {
+    try {
+      if (t.native) {
+        const b = await provider.getBalance(addr);
+        return { sym: t.sym, amount: parseFloat(ethers.formatEther(b)), isNative: true, ok: true };
+      } else {
+        const c = new ethers.Contract(t.address, ERC20_ABI_MIN, provider);
+        const b = await c.balanceOf(addr);
+        return { sym: t.sym, amount: parseFloat(ethers.formatUnits(b, t.decimals)), ok: true };
       }
+    } catch (e) {
+      console.warn('[LETHE] read fail', t.sym, e && e.message);
+      return { sym: t.sym, ok: false };
     }
   }
 
+  async function updateBalances(chainId, addr) {
+    if (_balanceInFlight) return;
+    _balanceInFlight = true;
+    try {
+      const cfg = CHAIN_TOKENS[chainId];
+      if (!cfg || !window.ethers) return;
+
+      const chainKey = chainId === 11155111 ? 'sepolia'
+                     : chainId === 42161    ? 'arbitrum'
+                     : 'ethereum';
+      const proxyUrl = new URL('/rpc', window.location.origin).href + '?chain=' + chainKey;
+      const provider = new ethers.JsonRpcProvider(proxyUrl);
+      const ethPrice = await getEthPrice();
+
+      // Parallel reads — 5x faster and one failure doesn't block the rest
+      const results = await Promise.all(cfg.tokens.map(t => _readToken(provider, t, addr)));
+
+      let totalEth = 0;
+      let totalUsd = 0;
+
+      for (const r of results) {
+        const balEl = document.getElementById('bal_' + r.sym);
+        const usdEl = document.getElementById('balusd_' + r.sym);
+        if (!balEl) continue;
+
+        if (r.ok) {
+          _lastBalances[r.sym] = { amount: r.amount, isNative: !!r.isNative };
+          const t = cfg.tokens.find(x => x.sym === r.sym);
+          const isStable = t && (r.sym === 'USDC' || r.sym === 'USDT' || r.sym === 'DAI');
+
+          if (r.isNative) {
+            balEl.textContent = r.amount === 0 ? '0.0000' : r.amount.toFixed(6);
+            totalEth += r.amount;
+            const usd = r.amount * ethPrice;
+            totalUsd += usd;
+            if (usdEl) usdEl.textContent = '$' + usd.toFixed(2);
+          } else {
+            balEl.textContent = r.amount === 0 ? '0.0'
+              : r.amount < 0.001 ? r.amount.toFixed(6)
+              : r.amount.toFixed(4);
+            const usd = isStable ? r.amount : r.amount * ethPrice;
+            totalUsd += usd;
+            if (usdEl) usdEl.textContent = '$' + usd.toFixed(2);
+          }
+        } else {
+          // Read failed — keep last known value if any
+          const prev = _lastBalances[r.sym];
+          if (prev) {
+            if (prev.isNative) {
+              balEl.textContent = prev.amount.toFixed(6);
+              totalEth += prev.amount;
+              totalUsd += prev.amount * ethPrice;
+            } else {
+              balEl.textContent = prev.amount === 0 ? '0.0' : prev.amount.toFixed(4);
+              const isStable = (r.sym === 'USDC' || r.sym === 'USDT' || r.sym === 'DAI');
+              totalUsd += isStable ? prev.amount : prev.amount * ethPrice;
+            }
+          }
+          // else leave whatever was there (default '—' from skeleton)
+        }
+      }
+
+      const statBal = document.getElementById('statBalance');
+      const statPort = document.getElementById('statPortfolio');
+      if (statBal) statBal.textContent = totalEth === 0 ? '0.0000' : totalEth.toFixed(6);
+      if (statPort) statPort.textContent = '$' + totalUsd.toFixed(2);
+
+      // Re-apply the "hide 0" filter after every refresh
+      try { _applyTokenFilter(); } catch (e) {}
+    } finally {
+      _balanceInFlight = false;
+    }
+  }
+
+  let _lastRenderedChain = null;
   async function refresh() {
     const chainId = getActiveChainId();
     const addr = getWalletAddress();
     if (!addr) return;
-    renderSkeleton(chainId);
+    // Only re-render the token list when the chain actually changed.
+    // Re-rendering on every tick is what caused the "flicker to —".
+    if (_lastRenderedChain !== chainId) {
+      renderSkeleton(chainId);
+      _lastRenderedChain = chainId;
+    }
     await updateBalances(chainId, addr);
   }
 
@@ -1899,6 +2662,108 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sel) sel.addEventListener('change', () => setTimeout(refresh, 200));
     // Also refresh every 15s for new deposits
     setInterval(refresh, 15000);
+
+    // ===== Keyboard shortcuts (standard wallet set) =====
+    document.addEventListener('keydown', (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      const el = document.activeElement;
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+
+      // Esc — close any open modal
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('letheAmountModal');
+        if (modal && modal.style.display !== 'none') {
+          const cancel = document.getElementById('letheAmountCancel');
+          if (cancel) cancel.click();
+        }
+        return;
+      }
+
+      // ? — show help
+      if (!mod && e.key === '?' && !typing) {
+        e.preventDefault();
+        const help = [
+          'Cmd/Ctrl + L  — Lock wallet',
+          'Cmd/Ctrl + R  — Refresh balances',
+          'Cmd/Ctrl + K  — Focus search',
+          'Cmd/Ctrl + C  — Copy wallet address',
+          'Esc           — Close modal / cancel',
+          '?             — Show this help',
+        ];
+        console.log('[SHORTCUTS]\n' + help.join('\n'));
+        if (typeof showToast === 'function') showToast('Shortcuts — see console (F12)', 'success');
+        return;
+      }
+
+      if (!mod) return;
+
+      // Cmd/Ctrl + L — lock
+      if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        const lockEl = document.querySelector('[id*="lock"],[onclick*="lock"]');
+        if (lockEl) lockEl.click();
+        return;
+      }
+
+      // Cmd/Ctrl + R — refresh balances. Cmd+Shift+R falls through to browser (hard reload).
+      // shiftKeyGuard: don't intercept when Shift is held.
+      if ((e.key === 'r' || e.key === 'R') && !typing && !e.shiftKey) {
+        e.preventDefault();
+        if (typeof refresh === 'function') refresh();
+        if (typeof showToast === 'function') showToast('Refreshing balances…', 'success');
+        return;
+      }
+
+      // Cmd/Ctrl + K — focus first visible input
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        const inp = document.querySelector('#walletSection input:not([type="hidden"]), #walletSection textarea');
+        if (inp) inp.focus();
+        return;
+      }
+
+      // Cmd/Ctrl + C — copy wallet address (only when nothing is selected)
+      if ((e.key === 'c' || e.key === 'C') && !window.getSelection().toString()) {
+        const addr = (typeof getWalletAddress === 'function') && getWalletAddress();
+        if (addr) {
+          e.preventDefault();
+          navigator.clipboard.writeText(addr).then(() => {
+            if (typeof showToast === 'function') showToast('Wallet address copied', 'success');
+          }).catch(() => {});
+        }
+        return;
+      }
+    });
+    console.log('[LETHE] Keyboard shortcuts active. Press ? for help.');
+
+    // ===== enterToSubmit — Enter in a password/input field submits =====
+    function attachEnterToSubmit(root) {
+      const scope = root || document;
+      scope.querySelectorAll('input[type="password"], input#walletPassword, input#passwordInput, input#unlockPassword, input#pwd').forEach((inp) => {
+        if (inp._enterAttached) return;
+        inp._enterAttached = true;
+        inp.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          // Find the nearest visible primary action button in the same card
+          const card = inp.closest('.card, section, form, div');
+          const btn = card && (
+            card.querySelector('button.btn-primary:not([disabled])') ||
+            card.querySelector('button[id*="unlock" i]:not([disabled])') ||
+            card.querySelector('button[id*="submit" i]:not([disabled])') ||
+            card.querySelector('button[id*="create" i]:not([disabled])') ||
+            card.querySelector('button[id*="restore" i]:not([disabled])')
+          );
+          if (btn) btn.click();
+        });
+      });
+    }
+    attachEnterToSubmit();
+    // Re-attach when sections toggle (unlock section becomes visible after lock)
+    // Enter-to-submit is attached once and on-demand (after unlock/lock), not via
+    // a global MutationObserver — that fired on every class toggle and starved the
+    // event loop, making the Unlock button unresponsive.
+    console.log('[LETHE] Enter-to-submit attached');
     // Click a row → prefill Withdraw card
     document.addEventListener('click', (ev) => {
       const row = ev.target.closest && ev.target.closest('#tokenList .token-row');
@@ -2989,6 +3854,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.lethRenderDeposits = () => { renderActive(); renderArchive(); };
 })();
+</script>
+
+
+<!-- ===== Lethe amount modal ===== -->
+<div id="letheAmountModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:#15151f;border:1px solid rgba(255,255,255,0.08);border-radius:16px;max-width:420px;width:calc(100% - 40px);padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div id="letheAmountTitle" style="font-size:20px;font-weight:700;margin-bottom:8px;">Amount</div>
+    <div id="letheAmountDesc" style="font-size:13px;color:#9494a8;margin-bottom:20px;line-height:1.5;">Enter amount</div>
+    <div style="position:relative;margin-bottom:20px;">
+      <input id="letheAmountInput" type="text" inputmode="decimal" placeholder="0.00"
+             style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 70px 16px 16px;color:#e8e8f0;font-size:20px;font-weight:600;outline:none;font-family:inherit;">
+      <div id="letheAmountSuffix" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);color:#9494a8;font-size:14px;font-weight:600;">USDC</div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button id="letheAmountCancel" class="btn btn-secondary" style="flex:1;padding:14px;">Cancel</button>
+      <button id="letheAmountConfirm" class="btn btn-primary" style="flex:1;padding:14px;">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Replace native prompt() with a styled modal.
+window.askAmount = function(title, desc, defaultValue, suffix) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('letheAmountModal');
+    const input = document.getElementById('letheAmountInput');
+    const cancelBtn = document.getElementById('letheAmountCancel');
+    const confirmBtn = document.getElementById('letheAmountConfirm');
+
+    document.getElementById('letheAmountTitle').textContent = title || 'Amount';
+    document.getElementById('letheAmountDesc').textContent = desc || '';
+    document.getElementById('letheAmountSuffix').textContent = suffix || 'USDC';
+    input.value = defaultValue || '';
+    modal.style.display = 'flex';
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+
+    function cleanup() {
+      modal.style.display = 'none';
+      cancelBtn.removeEventListener('click', onCancel);
+      confirmBtn.removeEventListener('click', onConfirm);
+      input.removeEventListener('keydown', onKey);
+    }
+    function onCancel() { cleanup(); resolve(null); }
+    function onConfirm() {
+      const v = input.value.trim();
+      if (!v || isNaN(parseFloat(v)) || parseFloat(v) <= 0) {
+        input.style.borderColor = '#ec4899';
+        return;
+      }
+      cleanup(); resolve(v);
+    }
+    function onKey(e) {
+      if (e.key === 'Enter') onConfirm();
+      if (e.key === 'Escape') onCancel();
+    }
+
+    cancelBtn.addEventListener('click', onCancel);
+    confirmBtn.addEventListener('click', onConfirm);
+    input.addEventListener('keydown', onKey);
+    input.addEventListener('input', () => { input.style.borderColor = ''; });
+
+    // Click outside closes
+    modal.addEventListener('click', (e) => { if (e.target === modal) onCancel(); }, { once: true });
+  });
+};
 </script>
 
 </body>

@@ -238,6 +238,51 @@ export async function initStealth(walletClient, pin = '0000') {
   return { metaAddress: getMetaAddress() };
 }
 
+// ===== Lethe Privacy Pool — key derivation =====
+//
+// The pool wallet derives from the SAME wallet.wallet signer that
+// initStealth uses. Same master seedPhrase in, deterministic 12-word
+// pool mnemonic + 32-byte encryption key out.
+//
+// No window.ethereum, no external wallet, no MetaMask. No timestamp,
+// nonce, address, or device fingerprint is mixed in. Re-derive on any
+// device with the same seedPhrase → identical pool wallet.
+//
+// Domain separators ('lethe-pool-entropy-v1:' / 'lethe-pool-encryption-v1:')
+// keep the pool seed and pool encryption key cryptographically
+// independent of each other and of the stealth keys.
+
+const POOL_SIGN_MESSAGE = 'Lethe Privacy Pool v1';
+
+export async function derivePoolCredentials(walletClient) {
+  if (!walletClient || typeof walletClient.signMessage !== 'function') {
+    throw new Error('derivePoolCredentials: walletClient with signMessage required');
+  }
+
+  // Deterministic ECDSA (RFC 6979) — same key + same message = same signature.
+  const signature = await walletClient.signMessage(POOL_SIGN_MESSAGE);
+
+  const { keccak256, toUtf8Bytes, getBytes } = await import('ethers');
+  const { entropyToMnemonic } = await import('@scure/bip39');
+  const { wordlist } = await import('@scure/bip39/wordlists/english');
+
+  const rootHex = keccak256(signature).slice(2);
+
+  // entropyToMnemonic wants raw bytes, not a hex string.
+  // 128-bit entropy = 12-word BIP39 phrase.
+  const entropyBytes = getBytes(
+    keccak256(toUtf8Bytes('lethe-pool-entropy-v1:' + rootHex)),
+  ).slice(0, 16);
+
+  const encryptionKey = keccak256(
+    toUtf8Bytes('lethe-pool-encryption-v1:' + rootHex),
+  ).slice(2);       // 32 bytes hex — Railgun wants a hex string here
+
+  const poolMnemonic = entropyToMnemonic(entropyBytes, wordlist);
+
+  return { poolMnemonic, encryptionKey };
+}
+
 export function getMetaAddress() {
   if (!spendingPublicKey || !viewingPublicKey) throw new Error('Stealth not initialized');
   // ERC-5564 format: st:eth:<compressedSpendingPub><compressedViewingPub>
@@ -406,6 +451,7 @@ export function isUnlocked() {
 
 window.Lethe = {
   initStealth,
+  derivePoolCredentials,
   getMetaAddress,
   generateNextAddress,
   getGeneratedAccounts,
