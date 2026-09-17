@@ -12,11 +12,16 @@ const ALLOWED_ORIGIN = 'https://lethewallet.com';
 
 const UPSTREAM_MAP = {
   ethereum: 'https://ethereum-rpc.publicnode.com',
-  arbitrum: 'https://arb1.arbitrum.io/rpc',   // official RPC, no token, full history
+  arbitrum: 'https://arb1.arbitrum.io/rpc',
   sepolia:  'https://ethereum-sepolia-rpc.publicnode.com',
 };
 
-const agent = new SocksProxyAgent(TOR_PROXY);
+// Fresh SOCKS agent per request. Tor closes idle circuits; a pooled
+// agent keeps pointing at dead ones and produces intermittent 502s.
+// The SOCKS handshake cost is negligible next to the Tor round-trip.
+function makeAgent() {
+  return new SocksProxyAgent(TOR_PROXY, { keepAlive: false });
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -49,22 +54,35 @@ const server = http.createServer((req, res) => {
         'User-Agent': 'lethewallet-rpc/1.0',
         'Accept': 'application/json',
       },
-      agent,
+      timeout: 25000,
     };
-    const upstream = https.request(opts, (upRes) => {
-      res.writeHead(upRes.statusCode || 200, {
-        ...corsHeaders,
-        'Content-Type': upRes.headers['content-type'] || 'application/json',
+
+    const attempt = (retriesLeft) => {
+      const upstream = https.request({ ...opts, agent: makeAgent() }, (upRes) => {
+        res.writeHead(upRes.statusCode || 200, {
+          ...corsHeaders,
+          'Content-Type': upRes.headers['content-type'] || 'application/json',
+        });
+        upRes.pipe(res);
       });
-      upRes.pipe(res);
-    });
-    upstream.on('error', (err) => {
-      console.error('[RPC] upstream error:', err.message, 'chain:', chainKey);
-      if (!res.headersSent) res.writeHead(502, { ...corsHeaders, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'upstream_unavailable', detail: err.message }));
-    });
-    upstream.write(body);
-    upstream.end();
+
+      upstream.on('timeout', () => {
+        upstream.destroy(new Error('upstream timeout after 25s'));
+      });
+
+      upstream.on('error', (err) => {
+        console.error('[RPC] upstream error:', err.message, 'chain:', chainKey, 'retriesLeft:', retriesLeft);
+        if (res.headersSent) { res.destroy(); return; }
+        if (retriesLeft > 0) return attempt(retriesLeft - 1);
+        res.writeHead(502, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'upstream_unavailable', detail: err.message }));
+      });
+
+      upstream.write(body);
+      upstream.end();
+    };
+
+    attempt(1);
   });
 });
 

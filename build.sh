@@ -5,7 +5,7 @@ cd /opt/kaput-stealth
 rm -rf /tmp/kaput-build
 npx esbuild frontend/lethe.js \
   --bundle --format=esm --splitting \
-  --entry-names=lethe.bundle --chunk-names=chunk-[hash] \
+  --entry-names=lethe.bundle --chunk-names=chunk-lethe-wallet-[hash] \
   --outdir=/tmp/kaput-build --platform=browser \
   --minify --legal-comments=none --minify --legal-comments=none --define:global=globalThis \
   --define:process.env.NODE_ENV='"production"' \
@@ -21,7 +21,7 @@ npx esbuild frontend/lethe.js \
   --external:url --external:worker_threads --external:child_process \
   --external:net --external:tls --external:dns
 
-sudo rm -f /var/www/kaput/lethe*.js /var/www/kaput/chunk-*.js
+sudo rm -f /var/www/kaput/lethe.bundle.js /var/www/kaput/chunk-lethe-wallet-*.js
 sudo cp -r /tmp/kaput-build/* /var/www/kaput/
 sudo cp /opt/kaput-stealth/frontend/wallet.html /var/www/kaput/wallet.html
 sudo chown -R caddy:caddy /var/www/kaput/
